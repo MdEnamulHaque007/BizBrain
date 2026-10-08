@@ -1,9 +1,11 @@
 import 'package:bizbrain/features/data_sources/data/google_sheets/google_sheets_loader.dart';
 import 'package:bizbrain/features/data_sources/data/local/hive_sheet_cache_storage.dart';
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_manager.dart';
+import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_storage.dart';
 import 'package:bizbrain/features/data_sources/data/repositories/cached_data_source_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive/hive.dart';
 
 /// Shared read-only Google Sheets loader.
 ///
@@ -23,10 +25,23 @@ final Provider<SheetCacheStorage> sheetCacheStorageProvider =
       return HiveSheetCacheStorage();
     });
 
+/// Indicates that app bootstrap initialized Hive and opened the cache box.
+final Provider<bool> sheetCacheStorageReadyProvider = Provider<bool>(
+  (ref) => Hive.isBoxOpen('sheet_cache_v1'),
+);
+
 /// Manager that wraps storage and provides higher-level helpers.
 final Provider<SheetCacheManager> sheetCacheManagerProvider =
     Provider<SheetCacheManager>((ref) {
       return SheetCacheManager(ref.read(sheetCacheStorageProvider));
+    });
+
+/// All locally cached Google Sheets sources, loaded when the feature starts.
+final FutureProvider<List<SheetCacheModel>> cachedSourcesProvider =
+    FutureProvider<List<SheetCacheModel>>((ref) async {
+      final sources = await ref.read(sheetCacheManagerProvider).list();
+      sources.sort((a, b) => b.fetchedAt.compareTo(a.fetchedAt));
+      return sources;
     });
 
 /// Cached repository for data sources.

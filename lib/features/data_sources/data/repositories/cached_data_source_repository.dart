@@ -1,3 +1,4 @@
+import 'package:bizbrain/core/logging/app_logger.dart';
 import 'package:bizbrain/features/data_sources/data/google_sheets/google_sheets_loader.dart';
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_manager.dart';
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
@@ -57,8 +58,24 @@ class CachedDataSourceRepository implements DataSourceRepository {
   }) async {
     final cached = await _cache.getCached(sourceId);
     if (cached != null && cached.organizationId == organizationId) {
+      AppLogger.info('Cache HIT for sourceId: $sourceId');
       return cached;
     }
+
+    final legacySourceId =
+        '${source.spreadsheetId}|${source.sheetName ?? ''}|${source.dataRange ?? ''}|h${source.headerRow}';
+    if (legacySourceId != sourceId) {
+      final legacyCache = await _cache.getCached(legacySourceId);
+      if (legacyCache != null && legacyCache.organizationId == organizationId) {
+        AppLogger.info('Cache HIT for sourceId: $sourceId');
+        final migratedCache = legacyCache.copyWith(sourceId: sourceId);
+        await _cache.saveCache(migratedCache);
+        await _cache.invalidate(legacySourceId);
+        return migratedCache;
+      }
+    }
+
+    AppLogger.info('Cache MISS for sourceId: $sourceId');
     return refreshDataSource(
       source: source,
       sourceId: sourceId,

@@ -78,6 +78,24 @@ void main() {
     expect(requestCount, 2);
   });
 
+  test(
+    'loads and migrates caches saved with the previous source ID format',
+    () async {
+      final legacy = createCache('abcdefghijk|||h1', 'org-one');
+      await storage.save(legacy);
+
+      final loaded = await repository.loadDataSource(
+        source: source,
+        sourceId: 'abcdefghijk|||1',
+        organizationId: 'org-one',
+      );
+
+      expect(loaded.sourceId, 'abcdefghijk|||1');
+      expect(await storage.get(legacy.sourceId), isNull);
+      expect(requestCount, 0);
+    },
+  );
+
   test('organization stream yields only that organization’s cache', () async {
     await storage.save(createCache('one', 'org-one'));
     await storage.save(createCache('two', 'org-two'));

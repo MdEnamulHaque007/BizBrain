@@ -38,6 +38,15 @@ class _GoogleSheetsPreviewPanelState
   SheetCacheModel? _cacheModel;
   String? _error;
   bool _loading = false;
+  bool _userInteracted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _restoreLatestCachedSource();
+    });
+  }
 
   @override
   void dispose() {
@@ -49,6 +58,7 @@ class _GoogleSheetsPreviewPanelState
   }
 
   Future<void> _load() async {
+    _userInteracted = true;
     setState(() {
       _loading = true;
       _error = null;
@@ -69,9 +79,7 @@ class _GoogleSheetsPreviewPanelState
         headerRow: headerRow,
       );
 
-      // Build a stable source id used by the cache (spreadsheetId|sheetName|range|headerRow)
-      final sourceId =
-          '${source.spreadsheetId}|${source.sheetName ?? ''}|${source.dataRange ?? ''}|h${source.headerRow}';
+      final sourceId = _sourceId(source);
       final organizationId =
           ref.read(activeOrganizationProvider)?.id ?? 'default';
 
@@ -102,6 +110,7 @@ class _GoogleSheetsPreviewPanelState
         _cacheModel = loaded;
         _error = null;
       });
+      ref.invalidate(cachedSourcesProvider);
     } on GoogleSheetsInputException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -132,6 +141,60 @@ class _GoogleSheetsPreviewPanelState
     }
   }
 
+  Future<void> _restoreLatestCachedSource() async {
+    try {
+      if (!ref.read(sheetCacheStorageReadyProvider)) {
+        return;
+      }
+      final sources = await ref.read(cachedSourcesProvider.future);
+      if (!mounted || _userInteracted || sources.isEmpty) return;
+      _displayCachedSource(sources.first);
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Failed to load cached Google Sheets sources',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  void _displayCachedSource(SheetCacheModel cache) {
+    _userInteracted = true;
+    final sourceParts = cache.sourceId.split('|');
+    if (sourceParts.length >= 4) {
+      _spreadsheetController.text = sourceParts[0];
+      _sheetNameController.text = sourceParts[1];
+      _rangeController.text = sourceParts[2];
+      _headerRowController.text = sourceParts[3].startsWith('h')
+          ? sourceParts[3].substring(1)
+          : '1';
+    } else {
+      _spreadsheetController.text = cache.sheetUrl;
+      _sheetNameController.text = cache.sheetName ?? '';
+      _rangeController.clear();
+      _headerRowController.text = '1';
+    }
+
+    final table = SheetTable(
+      headers: cache.columns,
+      rows: cache.rows
+          .map((record) => cachedRowToList(record, cache.columns))
+          .toList(growable: false),
+      metadata: SheetSourceMetadata(
+        spreadsheetId: sourceParts.first,
+        sheetName: cache.sheetName,
+        requestedRange: sourceParts.length >= 4 ? sourceParts[2] : null,
+        sourceUrl: cache.sheetUrl,
+        loadedAt: cache.fetchedAt,
+      ),
+    );
+    setState(() {
+      _table = table;
+      _cacheModel = cache;
+      _error = null;
+    });
+  }
+
   List<String> cachedRowToList(Map<String, String> rec, List<String> headers) {
     final row = <String>[];
     for (final h in headers) {
@@ -148,6 +211,9 @@ class _GoogleSheetsPreviewPanelState
     }
     return row;
   }
+
+  String _sourceId(GoogleSheetsDataSource source) =>
+      '${source.spreadsheetId}|${source.sheetName ?? ''}|${source.dataRange ?? ''}|${source.headerRow}';
 
   String _cacheStatusText(SheetCacheModel m) {
     final age = DateTime.now().difference(m.fetchedAt);
@@ -174,6 +240,8 @@ class _GoogleSheetsPreviewPanelState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final table = _table;
+    final cacheReady = ref.watch(sheetCacheStorageReadyProvider);
+    final cachedSources = cacheReady ? ref.watch(cachedSourcesProvider) : null;
 
     return Card(
       child: Padding(
@@ -204,6 +272,51 @@ class _GoogleSheetsPreviewPanelState
               'stored in the app.',
               style: theme.textTheme.bodyMedium,
             ),
+            const SizedBox(height: 16),
+            Text('Cached sheets', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            if (!cacheReady)
+              Text(
+                'Local cache is unavailable. Restart the app to initialize '
+                'persistent sheet storage.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              )
+            else
+              cachedSources!.when(
+                loading: () => const LinearProgressIndicator(),
+                error: (error, _) => Text(
+                  'Could not load cached sheets: $error',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+                data: (sources) {
+                  if (sources.isEmpty) {
+                    return Text(
+                      'No cached sheets yet.',
+                      style: theme.textTheme.bodySmall,
+                    );
+                  }
+                  return Column(
+                    children: [
+                      for (final source in sources)
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.table_chart_outlined),
+                          title: Text(source.sheetName ?? source.sourceId),
+                          subtitle: Text(
+                            '${source.rowCount} rows · ${_cacheStatusText(source)}',
+                          ),
+                          selected: _cacheModel?.sourceId == source.sourceId,
+                          onTap: () => _displayCachedSource(source),
+                        ),
+                    ],
+                  );
+                },
+              ),
             const SizedBox(height: 16),
             TextField(
               controller: _spreadsheetController,
@@ -260,7 +373,7 @@ class _GoogleSheetsPreviewPanelState
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.download_outlined),
-              label: Text(_loading ? 'Loading…' : 'Load preview'),
+              label: Text(_loading ? 'Connecting…' : 'Connect'),
             ),
             if (_error != null) ...[
               const SizedBox(height: 16),
@@ -331,8 +444,7 @@ class _GoogleSheetsPreviewPanelState
                                     int.tryParse(_headerRowController.text) ??
                                     1,
                               );
-                              final sourceId =
-                                  '${source.spreadsheetId}|${source.sheetName ?? ''}|${source.dataRange ?? ''}|h${source.headerRow}';
+                              final sourceId = _sourceId(source);
                               final organizationId =
                                   ref.read(activeOrganizationProvider)?.id ??
                                   'default';
@@ -367,6 +479,7 @@ class _GoogleSheetsPreviewPanelState
                                   _cacheModel = fresh;
                                   _error = null;
                                 });
+                                ref.invalidate(cachedSourcesProvider);
                               } catch (e) {
                                 if (!mounted) return;
                                 setState(() {
@@ -416,6 +529,7 @@ class _GoogleSheetsPreviewPanelState
                                   _cacheModel = null;
                                   _table = null;
                                 });
+                                ref.invalidate(cachedSourcesProvider);
                               } catch (e) {
                                 if (!mounted) return;
                                 setState(() {

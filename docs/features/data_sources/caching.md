@@ -41,10 +41,23 @@ oldest fetched cache entries first. The `version` field is reserved for
 future schema migrations. Cache contents are device-local and are not
 synchronized between devices.
 
+At app startup, bootstrap runs `Hive.initFlutter()`, registers
+`SheetCacheModelAdapter` (type ID `100`), then opens `sheet_cache_v1` before
+the UI starts. `hive_flutter` uses IndexedDB for web builds and the platform
+application-support storage on native builds. The cached-sources provider
+reads persisted rows when the data-source screen opens; the newest saved sheet
+is displayed automatically. Selecting another cached source displays it
+without a network request.
+
 ## Troubleshooting
 
 - Check debug logs for Hive initialization or persistence errors if a cache
   cannot be read or saved.
+- `Cache HIT for sourceId: ...` means the sheet was restored locally;
+  `Cache MISS for sourceId: ...` means a network fetch is expected.
+- On web, inspect browser developer tools under Application/Storage/IndexedDB
+  for the `sheet_cache_v1` database. Browser privacy settings or clearing site
+  data can remove IndexedDB contents.
 - Refresh requires a publicly viewable spreadsheet and an active network
   connection.
 - Use **Delete cache**, then load the same source to force a clean download.

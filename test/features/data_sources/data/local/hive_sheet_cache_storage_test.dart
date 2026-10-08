@@ -36,6 +36,32 @@ void main() {
     expect(await storage.getLastFetchTime('one'), cache.fetchedAt);
   });
 
+  test(
+    'persists after closing the box and creating a new storage instance',
+    () async {
+      final cache = createCache('persisted', 'org-a');
+      await storage.save(cache);
+      await Hive.box<SheetCacheModel>('sheet_cache_v1').close();
+
+      final reopenedStorage = HiveSheetCacheStorage();
+
+      expect(await reopenedStorage.get('persisted'), cache);
+    },
+  );
+
+  test(
+    'simulates a page reload by flushing and reopening the Hive box',
+    () async {
+      final cache = createCache('platform-storage', 'org-a');
+
+      await storage.save(cache);
+      await Hive.box<SheetCacheModel>('sheet_cache_v1').flush();
+      await Hive.box<SheetCacheModel>('sheet_cache_v1').close();
+
+      expect(await HiveSheetCacheStorage().get('platform-storage'), cache);
+    },
+  );
+
   test('filters and clears entries by organization', () async {
     await storage.save(createCache('one', 'org-a'));
     await storage.save(createCache('two', 'org-b'));
