@@ -1,0 +1,87 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Firebase configuration: local environment files stay out of source control,
+# only the *.example.json templates are tracked.
+/config/*.json
+!/config/*.example.json
+
+# Platform Firebase credentials and privileged keys must never be committed.
+**/google-services.json
+**/GoogleService-Info.plist
+*firebase-adminsdk*.json
+service-account*.json
+*.p8
+*.p12
+*.pem
+
+# Environment files (local secrets stay out of source control).
+.env
+.env.*
+!.env.example
+
+# Explicit local Firebase configuration with secrets.
+/config/firebase.development.json
+
+# Node dependencies (security tests tooling).
+node_modules/
+
+# Firebase emulator tooling and debug logs.
+.firebase/
+firestore-debug.log
+firebase-debug.log
+ui-debug.log
+database-debug.log
+pubsub-debug.log
+
+# Generated test reports and temporary artifacts.
+test_report*.json*
+
+# OS/editor caches.
+Thumbs.db
+
+.vercel
+.env*

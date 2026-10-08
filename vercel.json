@@ -1,0 +1,9 @@
+{
+  "buildCommand": "flutter pub get && flutter build web --release",
+  "outputDirectory": "build/web",
+  "installCommand": "echo Skipping install",
+  "framework": null,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

@@ -1,0 +1,103 @@
+// Firestore tenant security rules for BizBrain AI.
+//
+// Design notes (Micro Step 1.6.2):
+// * Every rule starts from `isSignedIn()` - anonymous/guest sessions carry no
+//   auth, so Guest Mode can never read real tenant data (the Flutter side
+//   additionally gates its repositories in guest mode).
+// * Organization reads are `get`-only (Micro Step 1.6.13): single-document
+//   reads are strict (active org + `memberIds` + active membership document
+//   via `get()`), while direct `list` on `organizations` is DENIED. During
+//   list evaluation path variables are unbound, so the membership `get()`
+//   cannot run there and no weaker substitute is accepted.
+// * Secure listing: clients list their OWN membership records through a
+//   collection-group query on `members` - ownership and active status are
+//   proven from the document's own `userId`/`status` fields, which are
+//   visible to list evaluation. The membership document is the source of
+//   truth, so a suspended or invited membership is excluded at query time
+//   even when `memberIds` on the organization is stale (fixes the
+//   suspended-member exposure documented by test 1.6.10/11). Organizations
+//   are then loaded with strict single-document `get`s.
+// * The membership rule is deliberately self-contained: it never calls
+//   `get()` on the organization document, which keeps the organization ->
+//   membership `get()` from recursing (a `get()` evaluates the target's own
+//   rules).
+// * No client write is accepted from any path; tenant data is written by the
+//   trusted backend only.
+// * Unmatched paths (factories, departments, dataSources, businessRules,
+//   insights, agentMemory, activityLogs, ...) fall through to the default
+//   deny at the bottom.
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Reads the caller's own membership document (single-document `get`
+    // only). A missing, unreadable, `invited` or `suspended` membership
+    // document makes this fail closed: the `get()` errors and the
+    // organization read is denied.
+    function hasActiveMembership(organizationId) {
+      return get(/databases/$(database)/documents/organizations/$(organizationId)/members/$(request.auth.uid)).data.status == 'active';
+    }
+
+    match /organizations/{organizationId} {
+
+      // Single-document reads: strict - signed-in caller, active
+      // organization, caller listed in `memberIds`, and an `active`
+      // membership document - all four must hold. `{organizationId}` is
+      // bound for `get` operations, so the membership `get()` works here.
+      allow get: if isSignedIn()
+        && resource.data.status == 'active'
+        && request.auth.uid in resource.data.memberIds
+        && hasActiveMembership(organizationId);
+
+      // Direct listing is denied: list evaluation cannot run the membership
+      // `get()` (path variables are unbound) and no weaker substitute is
+      // accepted. Clients must list membership records instead - see the
+      // collection-group rule on `members` below.
+      // No client writes, now and until the backend owns them.
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // Membership documents. The wildcard pattern is deliberate: collection-
+    // group queries are NOT evaluated against the nested
+    // /organizations/{organizationId}/members/{userId} match (only the
+    // catch-all matches, which denies everything) - proven by emulator test
+    // 12. This single block therefore covers both the single-document reads
+    // (path variables bound) and the collection-group listing query.
+    match /{path=**}/members/{userId} {
+
+      // Single-document reads: only the caller's own membership document,
+      // and only while it is `active` - `invited` and `suspended` are
+      // denied. `resource == null` (document not created yet) yields an
+      // empty read instead of a permission error; it exposes no data.
+      // `{userId}` is bound for `get` operations.
+      allow get: if isSignedIn()
+        && request.auth.uid == userId
+        && (resource == null || resource.data.status == 'active');
+
+      // Collection-group list: only the caller's own ACTIVE membership
+      // records. Path variables are unbound during list evaluation, so
+      // ownership and status are proven from the document fields
+      // themselves (`userId`, `status`) - which are also what the query
+      // must filter on. A broader query (missing filters) or one covering
+      // other users' records fails this rule and is denied.
+      // NOTE: membership documents must carry a `userId` field; a document
+      // without it fails the rule (fail closed).
+      allow list: if isSignedIn()
+        && request.auth.uid == resource.data.userId
+        && resource.data.status == 'active';
+
+      allow write: if false;
+    }
+
+    // Default deny for every other path in the database.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,19 @@
+# Static analysis configuration for BizBrain AI.
+#
+# Run `flutter analyze` from the repository root. Any error returned by the
+# analyzer must be resolved before a change is considered complete.
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  language:
+    # Reject implicit casts from `dynamic`. Keeps model serialization explicit
+    # and makes malformed Firestore/JSON payloads fail loudly instead of
+    # silently at runtime.
+    strict-casts: true
+
+linter:
+  rules:
+    prefer_single_quotes: true
+    directives_ordering: true
+    # Do not leave debugging print statements behind.
+    avoid_print: true
