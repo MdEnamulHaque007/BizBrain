@@ -161,7 +161,51 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
     return DropdownButtonFormField<String>(value:safe,isExpanded:true,decoration:InputDecoration(labelText:label,filled:true,fillColor:c.surfaceContainerHighest.withValues(alpha:.35),contentPadding:const EdgeInsets.symmetric(horizontal:12,vertical:12),border:OutlineInputBorder(borderRadius:BorderRadius.circular(14))),items:unique.map((s)=>DropdownMenuItem(value:s,child:Text(s,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v){if(v!=null)change(v);});
   }
   Widget _title(BuildContext context,String title,IconData icon){final c=Theme.of(context).colorScheme;return Row(children:[Container(width:4,height:26,decoration:BoxDecoration(color:c.primary,borderRadius:BorderRadius.circular(4))),const SizedBox(width:10),Icon(icon,color:c.tertiary),const SizedBox(width:8),Text(title,style:Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight:FontWeight.w800))]);}
-  Widget _metric(BuildContext context,String title,String value,IconData icon,Color color){final c=Theme.of(context).colorScheme;return SizedBox(width:210,child:Card(elevation:0,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18),side:BorderSide(color:c.outlineVariant)),child:Padding(padding:const EdgeInsets.all(16),child:Row(children:[Container(width:42,height:42,decoration:BoxDecoration(color:color.withValues(alpha:.1),borderRadius:BorderRadius.circular(13)),child:Icon(icon,color:color)),const SizedBox(width:12),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:Theme.of(context).textTheme.bodySmall),const SizedBox(height:4),Text(value,style:Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight:FontWeight.w800))]))])));}
+  Widget _metric(BuildContext context, String title, String value, IconData icon, Color color) {
+    final c = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 210,
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: c.outlineVariant),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: .1),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(icon, color: color),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(height: 4),
+                    Text(
+                      value,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
   Widget _empty(BuildContext context,String title,String message){final c=Theme.of(context).colorScheme;return Padding(padding:const EdgeInsets.all(20),child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.query_stats_rounded,size:42,color:c.tertiary),const SizedBox(height:12),Text(title,textAlign:TextAlign.center,style:Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w800)),const SizedBox(height:8),Text(message,textAlign:TextAlign.center,style:Theme.of(context).textTheme.bodyMedium?.copyWith(color:c.onSurfaceVariant))]));}
 }
 
