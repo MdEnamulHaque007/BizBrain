@@ -21,7 +21,7 @@ jobs:
           sed -i "s/__BIZBRAIN_BUILD_VERSION__/${GITHUB_SHA}/g" web/index.html
       - run: flutter pub get && flutter build web --release --pwa-strategy=none
       - name: Install Functions dependencies
-        run: npm ci --prefix functions
+        run: npm install --prefix functions
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
       - name: Deploy Firebase Functions
