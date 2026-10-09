@@ -50,8 +50,6 @@ void main() {
       expect(find.byIcon(Icons.menu), findsOneWidget);
       expect(find.byTooltip('Open navigation'), findsOneWidget);
 
-      // The drawer child only mounts while the drawer is open, so assert the
-      // configured drawer on the scaffold itself.
       final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
       expect(scaffold.drawer, isA<NavigationDrawer>());
 
@@ -212,7 +210,7 @@ void main() {
       );
     });
 
-    testWidgets('the placeholder features render inside the shell', (
+    testWidgets('activity logs and settings render their current screens', (
       tester,
     ) async {
       final app = await authedApp(tester, width: 1200, height: 800);
@@ -220,12 +218,12 @@ void main() {
       app.router.go(RoutePaths.activityLogs);
       await tester.pumpAndSettle();
       expect(find.byType(ActivityLogsScreen), findsOneWidget);
-      expect(find.byType(FeaturePlaceholderView), findsOneWidget);
+      expect(find.text('Activity logs'), findsWidgets);
 
       app.router.go(RoutePaths.settings);
       await tester.pumpAndSettle();
       expect(find.byType(SettingsScreen), findsOneWidget);
-      expect(find.byType(FeaturePlaceholderView), findsOneWidget);
+      expect(find.text('Settings'), findsWidgets);
       expect(app.router.state.uri.path, RoutePaths.settings);
     });
 
@@ -234,7 +232,10 @@ void main() {
     ) async {
       await authedApp(tester);
 
-      expect(NavigationItems.destinations.length, 9);
+      expect(
+        NavigationItems.destinations.length,
+        RoutePaths.knownPaths.difference(RoutePaths.publicPaths).length,
+      );
       expect(
         NavigationItems.destinations.map((d) => d.path).toSet(),
         RoutePaths.knownPaths.difference(RoutePaths.publicPaths),
@@ -300,7 +301,6 @@ void main() {
         findsOneWidget,
       );
 
-      // Drain the snack bar auto-dismiss timer before the test ends.
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
       expect(find.byType(SnackBar), findsNothing);
