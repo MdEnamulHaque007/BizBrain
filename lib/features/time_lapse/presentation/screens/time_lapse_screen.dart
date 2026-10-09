@@ -1,6 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -186,7 +187,7 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
     final values=points.map((p)=>p.value).toList();
     final mean=values.reduce((a,b)=>a+b)/values.length;
     final variance=values.map((v)=>(v-mean)*(v-mean)).reduce((a,b)=>a+b)/values.length;
-    final deviation=Math.sqrt(variance);
+    final deviation=math.sqrt(variance);
     if (deviation==0) return const [];
     // Flag periods at least two standard deviations from the mean.
     return points.where((p)=>(p.value-mean).abs()>=2*deviation)
