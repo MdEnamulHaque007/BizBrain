@@ -72,8 +72,8 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
     final graph=grouped.entries.toList()..sort((a,b)=>a.key.compareTo(b.key));
     final total=filtered.fold<double>(0,(sum,p)=>sum+p.qty);
     final average = filtered.isEmpty ? 0.0 : total / filtered.length;
-    final peak = filtered.isEmpty ? 0.0 : filtered.map((p) => p.qty).reduce(max);
-    final lowest = filtered.isEmpty ? 0.0 : filtered.map((p) => p.qty).reduce(min);
+    final peak = filtered.isEmpty ? 0.0 : filtered.map((p) => p.qty).reduce((a, b) => a > b ? a : b);
+    final lowest = filtered.isEmpty ? 0.0 : filtered.map((p) => p.qty).reduce((a, b) => a < b ? a : b);
     final trendValues = graph.map((e) => e.value).toList();
     final trendMean = trendValues.isEmpty ? 0.0 : trendValues.reduce((a, b) => a + b) / trendValues.length;
     final variance = trendValues.isEmpty ? 0.0 : trendValues.map((v) => pow(v - trendMean, 2).toDouble()).reduce((a, b) => a + b) / trendValues.length;
