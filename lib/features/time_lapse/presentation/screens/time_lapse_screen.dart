@@ -1,6 +1,7 @@
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
-import 'dart:math' as math;\nimport 'package:flutter/material.dart';
+import 'dart:math' as math;
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class TimeLapseScreen extends ConsumerStatefulWidget {
