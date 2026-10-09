@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:bizbrain/core/release_history/release_history_service.dart';
+import 'package:flutter/material.dart';
 
 /// Displays recent commits and the corresponding GitHub Actions status.
 class ReleaseHistoryDialog extends StatefulWidget {
@@ -85,7 +85,7 @@ class _ReleaseHistoryDialogState extends State<ReleaseHistoryDialog> {
                         Expanded(
                           child: ListView.separated(
                             itemCount: result.entries.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            separatorBuilder: (_, _) => const Divider(height: 1),
                             itemBuilder: (context, index) {
                               final entry = result.entries[index];
                               final date = entry.date == null
