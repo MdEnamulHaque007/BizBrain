@@ -68,6 +68,7 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
       grouped[d]=(grouped[d]??0)+p.qty;
     }
     final graph=grouped.entries.toList()..sort((a,b)=>a.key.compareTo(b.key));
+    final graphAverage=graph.isEmpty?0.0:graph.map((p)=>p.value).reduce((a,b)=>a+b)/graph.length;
     final total=filtered.fold<double>(0,(sum,p)=>sum+p.qty);
     final average=filtered.isEmpty?0.0:total/filtered.length;
     final peak=filtered.isEmpty?0.0:filtered.map((p)=>p.qty).reduce((a,b)=>a>b?a:b);
@@ -139,9 +140,9 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
               Text('${anomalies.length} unusual period(s) detected',style:theme.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w800)),
               const SizedBox(height:8),
               ...anomalies.take(8).map((entry)=>Padding(padding:const EdgeInsets.symmetric(vertical:5),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                Icon(entry.value>entry.key.value?Icons.trending_up_rounded:Icons.trending_down_rounded,color:entry.value>entry.key.value?c.tertiary:c.error,size:20),
+                Icon(entry.value>graphAverage?Icons.trending_up_rounded:Icons.trending_down_rounded,color:entry.value>graphAverage?c.tertiary:c.error,size:20),
                 const SizedBox(width:8),
-                Expanded(child:Text('${_date(entry.key)} · ${_fmt(entry.value)} quantity — ${entry.value>entry.key.value?'above':'below'} usual level',style:theme.textTheme.bodyMedium))
+                Expanded(child:Text('${_date(entry.key)} · ${_fmt(entry.value)} quantity — ${entry.value>graphAverage?'above':'below'} usual level',style:theme.textTheme.bodyMedium))
               ])))
             ]))),
           const SizedBox(height:18),_title(context,'Timeline records',Icons.view_timeline_rounded),const SizedBox(height:12),
