@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
 import 'package:flutter/material.dart';
@@ -69,6 +71,14 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
     }
     final graph=grouped.entries.toList()..sort((a,b)=>a.key.compareTo(b.key));
     final total=filtered.fold<double>(0,(sum,p)=>sum+p.qty);
+    final average = filtered.isEmpty ? 0.0 : total / filtered.length;
+    final peak = filtered.isEmpty ? 0.0 : filtered.map((p) => p.qty).reduce(max);
+    final lowest = filtered.isEmpty ? 0.0 : filtered.map((p) => p.qty).reduce(min);
+    final trendValues = graph.map((e) => e.value).toList();
+    final trendMean = trendValues.isEmpty ? 0.0 : trendValues.reduce((a, b) => a + b) / trendValues.length;
+    final variance = trendValues.isEmpty ? 0.0 : trendValues.map((v) => pow(v - trendMean, 2).toDouble()).reduce((a, b) => a + b) / trendValues.length;
+    final anomalyThreshold = sqrt(variance) * 2;
+    final anomalies = graph.where((e) => anomalyThreshold > 0 && (e.value - trendMean).abs() > anomalyThreshold).toList();
     return Container(
       decoration:BoxDecoration(gradient:LinearGradient(begin:Alignment.topCenter,end:Alignment.bottomCenter,colors:[c.primary.withValues(alpha:.035),c.surface])),
       child:ListView(padding:const EdgeInsets.all(20),children:[
@@ -115,6 +125,9 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
         else ...[
           Wrap(spacing:12,runSpacing:12,children:[
             _metric(context,'Total quantity',_fmt(total),Icons.inventory_2_outlined,c.primary),
+            _metric(context,'Average quantity',_fmt(average),Icons.functions_rounded,c.tertiary),
+            _metric(context,'Peak quantity',_fmt(peak),Icons.trending_up_rounded,c.secondary),
+            _metric(context,'Lowest quantity',_fmt(lowest),Icons.trending_down_rounded,c.error),
             _metric(context,'Matching rows','${filtered.length}',Icons.table_rows_rounded,c.tertiary),
             _metric(context,'Stages','${selected.map(_label).toSet().length}',Icons.account_tree_outlined,c.secondary),
           ]),
@@ -125,6 +138,29 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
               SizedBox(height:250,width:double.infinity,child:CustomPaint(painter:_LinePainter(points:graph,line:c.primary,grid:c.outlineVariant,text:c.onSurfaceVariant))),
               const SizedBox(height:8),Text('X-axis: $_group · Y-axis: summed quantity',style:theme.textTheme.bodySmall?.copyWith(color:c.onSurfaceVariant))
             ]))),
+          const SizedBox(height:18),
+          _title(context,'Anomaly detection',Icons.warning_amber_rounded),
+          const SizedBox(height:12),
+          Card(
+            elevation:0,
+            shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20),side:BorderSide(color:c.outlineVariant)),
+            child:Padding(
+              padding:const EdgeInsets.all(16),
+              child:anomalies.isEmpty
+                ?_empty(context,'No clear anomalies detected','Trend points are checked against the mean using a 2-standard-deviation threshold.')
+                :Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                  Text('${anomalies.length} unusual trend point(s) detected',style:theme.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w800)),
+                  const SizedBox(height:8),
+                  ...anomalies.map((point)=>ListTile(
+                    dense:true,
+                    leading:Icon(Icons.warning_amber_rounded,color:c.error),
+                    title:Text(_date(point.key)),
+                    subtitle:Text('Average: ${_fmt(trendMean)} · Difference: ${_fmt(point.value-trendMean)}'),
+                    trailing:Text(_fmt(point.value),style:theme.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w800)),
+                  )),
+                ]),
+            ),
+          ),
           const SizedBox(height:18),_title(context,'Timeline records',Icons.view_timeline_rounded),const SizedBox(height:12),
           if(filtered.isNotEmpty)Card(elevation:0,clipBehavior:Clip.antiAlias,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18),side:BorderSide(color:c.outlineVariant)),child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:DataTable(
             headingRowColor:WidgetStatePropertyAll(c.primaryContainer.withValues(alpha:.7)),
