@@ -17,6 +17,7 @@ import 'package:bizbrain/features/data_sources/presentation/screens/data_sources
 import 'package:bizbrain/features/insights/presentation/screens/insights_screen.dart';
 import 'package:bizbrain/features/organizations/presentation/screens/organizations_screen.dart';
 import 'package:bizbrain/features/reports/presentation/screens/reports_screen.dart';
+import 'package:bizbrain/features/time_lapse/presentation/screens/time_lapse_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -78,6 +79,7 @@ final _shellPages = <String, GoRouterWidgetBuilder>{
   RoutePaths.reports: (_, _) => const ReportsScreen(),
   RoutePaths.activityLogs: (_, _) => const ActivityLogsScreen(),
   RoutePaths.settings: (_, _) => const SettingsScreen(),
+  RoutePaths.timeLapse: (_, _) => const TimeLapseScreen(),
 };
 
 /// Reconstructs the path-plus-query representation the redirect logic uses.
