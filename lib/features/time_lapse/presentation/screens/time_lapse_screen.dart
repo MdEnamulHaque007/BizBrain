@@ -142,16 +142,27 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
     for(final c in cols){if(aliases==_dateAliases&&_isDateField(c))return c;if(aliases==_qtyAliases&&_isQtyField(c))return c;}
     return null;
   }
-  static DateTime? _parseDate(String? value){
-    if(value==null||value.trim().isEmpty)return null;
-    final v=value.trim();final parsed=DateTime.tryParse(v);if(parsed!=null)return parsed;
-    // Google Sheets date serials count days from 1899-12-30.
-    final serial=double.tryParse(v);
-    if(serial!=null&&serial>=1&&serial<100000){
-      return DateTime(1899,12,30).add(Duration(days:serial.floor()));
+  static DateTime? _parseDate(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    final v = value.trim();
+    final parsed = DateTime.tryParse(v);
+    if (parsed != null) return parsed;
+    // Google Sheets serial date: day count from 1899-12-30.
+    final serial = double.tryParse(v);
+    if (serial != null && serial >= 1 && serial < 100000) {
+      return DateTime(1899, 12, 30).add(Duration(days: serial.floor()));
     }
-    final normalized=v.replaceAll(RegExp(r'[,]+'),' ').trim();
-    final monthDate=RegExp(r'^(\d{1,2})[\s/-]+([A-Za-z]{3,})[\s/-]+(\d{2,4})
+    final parts = v.replaceAll('.', '/').replaceAll('-', '/').split('/');
+    if (parts.length != 3) return null;
+    final a = int.tryParse(parts[0]);
+    final b = int.tryParse(parts[1]);
+    final d = int.tryParse(parts[2]);
+    if (a == null || b == null || d == null) return null;
+    if (parts[0].length == 4) return _safeDate(a, b, d);
+    if (a > 12) return _safeDate(d < 100 ? 2000 + d : d, b, a);
+    if (b > 12) return _safeDate(d < 100 ? 2000 + d : d, a, b);
+    return _safeDate(d < 100 ? 2000 + d : d, b, a);
+  }
   static DateTime? _safeDate(int y,int m,int d){if(y<1900||m<1||m>12||d<1||d>31)return null;final x=DateTime(y,m,d);return x.year==y&&x.month==m&&x.day==d?x:null;}
   static double? _parseQty(String? v){if(v==null||v.trim().isEmpty)return null;final n=v.replaceAll(',','').replaceAll(RegExp(r'[^0-9.\-]'),'');if(n.isEmpty||n=='-'||n=='.')return null;return double.tryParse(n);}
   static DateTime _week(DateTime d){final x=DateTime(d.year,d.month,d.day);return x.subtract(Duration(days:x.weekday-1));}
