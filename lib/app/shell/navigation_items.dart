@@ -84,6 +84,12 @@ abstract final class NavigationItems {
       path: RoutePaths.activityLogs,
     ),
     NavDestination(
+      label: 'Time Lapse',
+      icon: Icons.timelapse_outlined,
+      selectedIcon: Icons.timelapse_rounded,
+      path: RoutePaths.timeLapse,
+    ),
+    NavDestination(
       label: 'Settings',
       icon: Icons.settings_outlined,
       selectedIcon: Icons.settings,
