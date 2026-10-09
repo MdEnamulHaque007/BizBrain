@@ -1,4 +1,5 @@
 import 'package:bizbrain/app/shell/navigation_items.dart';
+import 'package:bizbrain/app/shell/release_history_dialog.dart';
 import 'package:bizbrain/core/constants/app_constants.dart';
 import 'package:bizbrain/core/update/app_update_service.dart';
 import 'package:bizbrain/core/utils/responsive.dart';
@@ -130,6 +131,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   void _showHelp() {
     _scaffoldKey.currentState?.closeDrawer();
+    final pageContext = context;
     final updateFuture = AppUpdateService.check();
     showDialog<void>(
       context: context,
@@ -174,6 +176,16 @@ class _AppShellState extends ConsumerState<AppShell> {
                 child: const Text('Update Now'),
               );
             },
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              showDialog<void>(
+                context: pageContext,
+                builder: (_) => const ReleaseHistoryDialog(),
+              );
+            },
+            child: const Text('View Release History'),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
