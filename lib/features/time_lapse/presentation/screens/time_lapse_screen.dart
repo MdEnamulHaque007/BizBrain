@@ -69,6 +69,9 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
     }
     final graph=grouped.entries.toList()..sort((a,b)=>a.key.compareTo(b.key));
     final total=filtered.fold<double>(0,(sum,p)=>sum+p.qty);
+    final average=filtered.isEmpty?0.0:total/filtered.length;
+    final peak=filtered.isEmpty?0.0:filtered.map((p)=>p.qty).reduce((a,b)=>a>b?a:b);
+    final lowest=filtered.isEmpty?0.0:filtered.map((p)=>p.qty).reduce((a,b)=>a<b?a:b);
     return Container(
       decoration:BoxDecoration(gradient:LinearGradient(begin:Alignment.topCenter,end:Alignment.bottomCenter,colors:[c.primary.withValues(alpha:.035),c.surface])),
       child:ListView(padding:const EdgeInsets.all(20),children:[
@@ -115,6 +118,9 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
         else ...[
           Wrap(spacing:12,runSpacing:12,children:[
             _metric(context,'Total quantity',_fmt(total),Icons.inventory_2_outlined,c.primary),
+            _metric(context,'Average quantity',_fmt(average),Icons.functions_rounded,c.secondary),
+            _metric(context,'Peak quantity',_fmt(peak),Icons.trending_up_rounded,c.tertiary),
+            _metric(context,'Lowest quantity',_fmt(lowest),Icons.trending_down_rounded,c.error),
             _metric(context,'Matching rows','${filtered.length}',Icons.table_rows_rounded,c.tertiary),
             _metric(context,'Stages','${selected.map(_label).toSet().length}',Icons.account_tree_outlined,c.secondary),
           ]),
