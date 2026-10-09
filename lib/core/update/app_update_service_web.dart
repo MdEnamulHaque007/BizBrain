@@ -52,7 +52,7 @@ class AppUpdateService {
 
     final keys = await web.window.caches.keys().toDart;
     for (final key in keys.toDart) {
-      await web.window.caches.delete(key).toDart;
+      await web.window.caches.delete(key.toDart).toDart;
     }
 
     web.window.location.reload();
