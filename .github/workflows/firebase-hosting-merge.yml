@@ -14,11 +14,18 @@ jobs:
         with:
           channel: stable
           cache: true
+      - name: Get Flutter dependencies
+        run: flutter pub get
+      - name: Run Flutter static analysis
+        run: flutter analyze
+      - name: Run Flutter tests
+        run: flutter test
       - name: Generate web version marker
         run: |
           echo "${GITHUB_SHA}" > web/version.txt
           sed -i "s/__BIZBRAIN_BUILD_VERSION__/${GITHUB_SHA}/g" web/index.html
-      - run: flutter pub get && flutter build web --release --pwa-strategy=none
+      - name: Build Flutter Web release
+        run: flutter build web --release --pwa-strategy=none
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
