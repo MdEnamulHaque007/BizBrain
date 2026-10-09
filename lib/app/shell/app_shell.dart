@@ -111,6 +111,7 @@ class _AppShellState extends ConsumerState<AppShell> {
               user: user,
               guest: guest,
               onSelected: _selectDestination,
+              onHelp: _showHelp,
               onLogout: _logout,
               onExitGuest: _exitGuest,
             ),
@@ -396,6 +397,7 @@ class _RailMenu extends StatelessWidget {
     required this.user,
     required this.guest,
     required this.onSelected,
+    required this.onHelp,
     required this.onLogout,
     required this.onExitGuest,
   });
@@ -405,6 +407,7 @@ class _RailMenu extends StatelessWidget {
   final AppUser? user;
   final bool guest;
   final ValueChanged<int> onSelected;
+  final VoidCallback onHelp;
   final VoidCallback onLogout;
   final VoidCallback onExitGuest;
 
@@ -438,6 +441,7 @@ class _RailMenu extends StatelessWidget {
               ),
             ),
             const Divider(),
+            _RailHelpAction(extended: extended, onHelp: onHelp),
             if (account != null)
               _AccountPanel(
                 user: account,
@@ -448,6 +452,36 @@ class _RailMenu extends StatelessWidget {
               _GuestPanel(extended: extended, onExit: onExitGuest),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _RailHelpAction extends StatelessWidget {
+  const _RailHelpAction({required this.extended, required this.onHelp});
+
+  final bool extended;
+  final VoidCallback onHelp;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!extended) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: IconButton(
+          icon: const Icon(Icons.help_outline),
+          tooltip: 'Help & Updates',
+          onPressed: onHelp,
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: ListTile(
+        leading: const Icon(Icons.help_outline),
+        title: const Text('Help'),
+        onTap: onHelp,
       ),
     );
   }
