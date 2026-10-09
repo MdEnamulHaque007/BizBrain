@@ -18,6 +18,7 @@ abstract final class RoutePaths {
   static const String reports = '/reports';
   static const String activityLogs = '/activity-logs';
   static const String settings = '/settings';
+  static const String timeLapse = '/time-lapse';
 
   /// Routes reachable without a session.
   ///
@@ -52,6 +53,7 @@ abstract final class RoutePaths {
     reports,
     activityLogs,
     settings,
+    timeLapse,
   };
 
   /// Query parameter carrying the deep link to restore after signing in.
