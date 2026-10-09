@@ -34,9 +34,12 @@ class _GoogleSheetsPreviewPanelState
   final TextEditingController _headerRowController = TextEditingController(
     text: '1',
   );
+  final FocusNode _urlFocusNode = FocusNode();
+  final GlobalKey _urlFieldKey = GlobalKey();
 
   SheetTable? _table;
   SheetCacheModel? _cacheModel;
+  String? _editingSourceId;
   String? _error;
   bool _loading = false;
   bool _userInteracted = false;
@@ -56,6 +59,7 @@ class _GoogleSheetsPreviewPanelState
     _sheetNameController.dispose();
     _rangeController.dispose();
     _headerRowController.dispose();
+    _urlFocusNode.dispose();
     super.dispose();
   }
 
@@ -114,6 +118,7 @@ class _GoogleSheetsPreviewPanelState
       setState(() {
         _table = table;
         _cacheModel = loaded;
+        _editingSourceId = loaded.sourceId;
         _error = null;
       });
       ref.invalidate(sourcesListProvider);
@@ -154,7 +159,7 @@ class _GoogleSheetsPreviewPanelState
       }
       final sources = await ref.read(cachedSourcesProvider.future);
       if (!mounted || _userInteracted || sources.isEmpty) return;
-      _displayCachedSource(sources.first);
+      _displayCachedSource(sources.first, editing: false);
     } catch (error, stackTrace) {
       AppLogger.error(
         'Failed to load cached Google Sheets sources',
@@ -164,7 +169,7 @@ class _GoogleSheetsPreviewPanelState
     }
   }
 
-  void _displayCachedSource(SheetCacheModel cache) {
+  void _displayCachedSource(SheetCacheModel cache, {bool editing = true}) {
     _userInteracted = true;
     final sourceParts = cache.sourceId.split('|');
     final legacyHasSettings = sourceParts.length >= 4;
@@ -197,7 +202,35 @@ class _GoogleSheetsPreviewPanelState
     setState(() {
       _table = table;
       _cacheModel = cache;
+      _editingSourceId = editing ? cache.sourceId : null;
       _error = null;
+    });
+  }
+
+  void _clearForm({bool focusUrl = true}) {
+    setState(() {
+      _sourceLabelController.clear();
+      _spreadsheetController.clear();
+      _sheetNameController.clear();
+      _rangeController.clear();
+      _headerRowController.text = '1';
+      _table = null;
+      _cacheModel = null;
+      _editingSourceId = null;
+      _error = null;
+    });
+    if (!focusUrl) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final fieldContext = _urlFieldKey.currentContext;
+      if (fieldContext != null) {
+        await Scrollable.ensureVisible(
+          fieldContext,
+          duration: const Duration(milliseconds: 250),
+          alignment: 0.2,
+        );
+      }
+      if (mounted) _urlFocusNode.requestFocus();
     });
   }
 
@@ -263,6 +296,7 @@ class _GoogleSheetsPreviewPanelState
           _sheetNameController.clear();
           _rangeController.clear();
           _headerRowController.text = '1';
+          _editingSourceId = null;
         });
       }
       ref.invalidate(sourcesListProvider);
@@ -377,9 +411,8 @@ class _GoogleSheetsPreviewPanelState
             ),
             const SizedBox(height: 8),
             Text(
-              'Load a publicly shared spreadsheet ("Anyone with the link can '
-              'view") for a read-only preview. No Google credentials are '
-              'stored in the app.',
+              'Enter a publicly shared Google Sheets URL and settings, then '
+              'click Connect. No Google credentials are stored in the app.',
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 16),
@@ -392,8 +425,21 @@ class _GoogleSheetsPreviewPanelState
               ),
             ),
             const SizedBox(height: 16),
-            Text('Saved Google Sheets', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Saved Google Sheets (${cachedSources?.value?.length ?? 0})',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _loading ? null : () => _clearForm(),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add New Sheet'),
+                ),
+              ],
+            ),
             if (!cacheReady)
               Text(
                 'Local cache is unavailable. Restart the app to initialize '
@@ -422,6 +468,17 @@ class _GoogleSheetsPreviewPanelState
                     children: [
                       for (final source in sources)
                         Card(
+                          color: _editingSourceId == source.sourceId
+                              ? theme.colorScheme.primaryContainer
+                              : null,
+                          shape: RoundedRectangleBorder(
+                            side: BorderSide(
+                              color: _editingSourceId == source.sourceId
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.outlineVariant,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                           child: ListTile(
                             leading: const Icon(Icons.table_chart_outlined),
                             title: Text(
@@ -435,23 +492,38 @@ class _GoogleSheetsPreviewPanelState
                               '${source.dataRange == null ? '' : ' · ${source.dataRange}'} · '
                               'Fetched ${source.fetchedAt.toLocal()}',
                             ),
-                            trailing: PopupMenuButton<String>(
-                              tooltip: 'Source actions',
-                              onSelected: (action) {
-                                if (action == 'refresh') {
-                                  _refreshCachedSource(source);
-                                } else if (action == 'delete') {
-                                  _deleteCachedSource(source);
-                                }
-                              },
-                              itemBuilder: (context) => const [
-                                PopupMenuItem(
-                                  value: 'refresh',
-                                  child: Text('Refresh'),
-                                ),
-                                PopupMenuItem(
-                                  value: 'delete',
-                                  child: Text('Delete'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_editingSourceId == source.sourceId)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: Chip(
+                                      label: const Text('Editing'),
+                                      visualDensity: VisualDensity.compact,
+                                      backgroundColor:
+                                          theme.colorScheme.secondaryContainer,
+                                    ),
+                                  ),
+                                PopupMenuButton<String>(
+                                  tooltip: 'Source actions',
+                                  onSelected: (action) {
+                                    if (action == 'refresh') {
+                                      _refreshCachedSource(source);
+                                    } else if (action == 'delete') {
+                                      _deleteCachedSource(source);
+                                    }
+                                  },
+                                  itemBuilder: (context) => const [
+                                    PopupMenuItem(
+                                      value: 'refresh',
+                                      child: Text('Refresh'),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'delete',
+                                      child: Text('Delete'),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -465,7 +537,16 @@ class _GoogleSheetsPreviewPanelState
                 },
               ),
             const SizedBox(height: 16),
+            Text('Add or Edit Google Sheet', style: theme.textTheme.titleLarge),
+            const SizedBox(height: 4),
+            Text(
+              'Enter URL and settings, then click Connect.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
             TextField(
+              key: _urlFieldKey,
+              focusNode: _urlFocusNode,
               controller: _spreadsheetController,
               decoration: const InputDecoration(
                 labelText: 'Spreadsheet URL or ID',
@@ -511,16 +592,33 @@ class _GoogleSheetsPreviewPanelState
               ],
             ),
             const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _loading ? null : _load,
-              icon: _loading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.download_outlined),
-              label: Text(_loading ? 'Connecting…' : 'Connect'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: _loading ? null : _load,
+                  icon: _loading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.download_outlined),
+                  label: Text(_loading ? 'Connecting…' : 'Connect'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _loading ? null : () => _clearForm(),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Clear Form'),
+                ),
+                if (_editingSourceId != null)
+                  TextButton.icon(
+                    onPressed: _loading ? null : () => _clearForm(),
+                    icon: const Icon(Icons.close),
+                    label: const Text('Cancel Edit'),
+                  ),
+              ],
             ),
             if (_error != null) ...[
               const SizedBox(height: 16),

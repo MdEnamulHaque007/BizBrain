@@ -44,7 +44,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Saved Google Sheets'), findsOneWidget);
+    expect(find.text('Saved Google Sheets (2)'), findsOneWidget);
     expect(find.text('Inventory'), findsWidgets);
     expect(find.text('Orders'), findsOneWidget);
     expect(find.text('Boot'), findsOneWidget);
@@ -53,6 +53,23 @@ void main() {
     await tester.tap(find.text('Orders'));
     await tester.pumpAndSettle();
     expect(find.text('Order item'), findsOneWidget);
+    expect(find.text('Editing'), findsOneWidget);
+    expect(find.text('Cancel Edit'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Cancel Edit'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel Edit'));
+    await tester.pumpAndSettle();
+    expect(find.text('Editing'), findsNothing);
+    expect(find.text('Cancel Edit'), findsNothing);
+    expect(
+      tester
+          .widgetList<TextField>(find.byType(TextField))
+          .first
+          .controller!
+          .text,
+      '',
+    );
   });
 
   testWidgets('Connect loads and immediately displays sheet data', (
@@ -97,6 +114,46 @@ void main() {
     await tester.tap(find.text('Connect'));
     await tester.pumpAndSettle();
     expect(requestCount, 1);
+  });
+
+  testWidgets('Add New Sheet clears fields and focuses the URL input', (
+    tester,
+  ) async {
+    final manager = SheetCacheManager(_TestCacheStorage([]));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sheetCacheStorageReadyProvider.overrideWith((ref) => true),
+          cachedSourcesProvider.overrideWith((ref) async => []),
+          sheetCacheManagerProvider.overrideWith((ref) => manager),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(child: GoogleSheetsPreviewPanel()),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'Old label');
+    await tester.enterText(fields.at(1), 'abcdefghijk');
+    await tester.enterText(fields.at(2), 'Old tab');
+    await tester.enterText(fields.at(3), 'A1:B10');
+    await tester.enterText(fields.at(4), '3');
+    await tester.tap(find.text('Add New Sheet'));
+    await tester.pumpAndSettle();
+
+    final clearedFields = tester
+        .widgetList<TextField>(find.byType(TextField))
+        .toList();
+    expect(clearedFields[0].controller!.text, isEmpty);
+    expect(clearedFields[1].controller!.text, isEmpty);
+    expect(clearedFields[2].controller!.text, isEmpty);
+    expect(clearedFields[3].controller!.text, isEmpty);
+    expect(clearedFields[4].controller!.text, '1');
+    expect(clearedFields[1].focusNode!.hasFocus, isTrue);
   });
 }
 
