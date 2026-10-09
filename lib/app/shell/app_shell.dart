@@ -419,15 +419,17 @@ class _RailMenu extends StatelessWidget {
         theme.navigationRailTheme.backgroundColor ??
         theme.colorScheme.surfaceContainerLow;
 
-    return Container(
+    return SizedBox(
       width: extended ? _expandedRailWidth : _compactRailWidth,
-      color: railColor,
-      child: SafeArea(
-        child: Column(
+      child: Material(
+        color: railColor,
+        child: SafeArea(
+          child: Column(
           children: <Widget>[
             Expanded(
               child: NavigationRail(
                 extended: extended,
+                scrollable: true,
                 selectedIndex: selectedIndex < 0 ? null : selectedIndex,
                 destinations: <NavigationRailDestination>[
                   for (final destination in NavigationItems.destinations)
@@ -451,6 +453,7 @@ class _RailMenu extends StatelessWidget {
             else if (guest)
               _GuestPanel(extended: extended, onExit: onExitGuest),
           ],
+          ),
         ),
       ),
     );
