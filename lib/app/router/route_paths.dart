@@ -12,6 +12,7 @@ abstract final class RoutePaths {
   static const String organizations = '/organizations';
   static const String dataSources = '/data-sources';
   static const String aiBrain = '/ai-brain';
+  static const String aiChat = '/ai-chat';
   static const String businessRules = '/business-rules';
   static const String insights = '/insights';
   static const String reports = '/reports';
@@ -45,6 +46,7 @@ abstract final class RoutePaths {
     organizations,
     dataSources,
     aiBrain,
+    aiChat,
     businessRules,
     insights,
     reports,
