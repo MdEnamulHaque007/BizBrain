@@ -10,7 +10,7 @@ class TimeLapseScreen extends ConsumerStatefulWidget {
 }
 
 class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
-  String _source = 'All stages';
+  final Set<String> _selectedLabels = <String>{};
   String _dateField = 'Auto detect';
   String _qtyField = 'Auto detect';
   String _range = '30 days';
@@ -42,8 +42,10 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
     final theme=Theme.of(context); final c=theme.colorScheme;
     final sources=all.where(_isProduction).toList();
     final labels=sources.map(_label).toSet().toList()..sort();
-    if(_source!='All stages'&&!labels.contains(_source)) _source='All stages';
-    final selected=_source=='All stages'?sources:sources.where((s)=>_label(s)==_source).toList();
+    _selectedLabels.removeWhere((label) => !labels.contains(label));
+    final selected = _selectedLabels.isEmpty
+        ? sources
+        : sources.where((s) => _selectedLabels.contains(_label(s))).toList();
     final dates=selected.expand((s)=>s.columns).where(_isDateField).toSet().toList()..sort();
     final quantities=selected.expand((s)=>s.columns).where(_isQtyField).toSet().toList()..sort();
     if(!dates.contains(_dateField)) _dateField='Auto detect';
@@ -79,13 +81,35 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
         Card(elevation:0,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20),side:BorderSide(color:c.outlineVariant)),child:Padding(padding:const EdgeInsets.all(16),child:LayoutBuilder(builder:(context,box){
           final w=box.maxWidth>=760?(box.maxWidth-24)/3:box.maxWidth>=480?(box.maxWidth-12)/2:box.maxWidth;
           return Wrap(spacing:12,runSpacing:12,children:[
-            SizedBox(width:w,child:_drop(context,'Stage / source',_source,['All stages',...labels],(v)=>setState(()=>_source=v))),
             SizedBox(width:w,child:_drop(context,'Date field',_dateField,['Auto detect',...dates],(v)=>setState(()=>_dateField=v))),
             SizedBox(width:w,child:_drop(context,'Quantity field',_qtyField,['Auto detect',...quantities],(v)=>setState(()=>_qtyField=v))),
             SizedBox(width:w,child:_drop(context,'Date range',_range,const ['7 days','30 days','90 days','All dates'],(v)=>setState(()=>_range=v))),
             SizedBox(width:w,child:_drop(context,'Group trend by',_group,const ['Day','Week','Month'],(v)=>setState(()=>_group=v))),
           ]);
         }))),
+        if (labels.isNotEmpty) ...[
+          const SizedBox(height:12),
+          _title(context, 'Compare stages / sheets', Icons.compare_arrows_rounded),
+          const SizedBox(height:8),
+          Wrap(spacing:8, runSpacing:8, children: [
+            FilterChip(
+              label: Text(_selectedLabels.isEmpty ? 'All stages (${labels.length})' : 'All stages'),
+              selected: _selectedLabels.isEmpty,
+              onSelected: (_) => setState(() => _selectedLabels.clear()),
+            ),
+            ...labels.map((label) => FilterChip(
+              label: Text(label),
+              selected: _selectedLabels.contains(label),
+              onSelected: (checked) => setState(() {
+                if (checked) {
+                  _selectedLabels.add(label);
+                } else {
+                  _selectedLabels.remove(label);
+                }
+              }),
+            )),
+          ]),
+        ],
         const SizedBox(height:18),
         if(sources.isEmpty)_empty(context,'No production sheets found','Open Data Sources and load the Cutting and Sewing Google Sheets first.')
         else ...[
@@ -172,110 +196,6 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
   Widget _drop(BuildContext context,String label,String value,List<String> options,ValueChanged<String> change){
     final c=Theme.of(context).colorScheme;final unique=options.toSet().toList();final safe=unique.contains(value)?value:unique.first;
     return DropdownButtonFormField<String>(initialValue:safe,isExpanded:true,decoration:InputDecoration(labelText:label,filled:true,fillColor:c.surfaceContainerHighest.withValues(alpha:.35),contentPadding:const EdgeInsets.symmetric(horizontal:12,vertical:12),border:OutlineInputBorder(borderRadius:BorderRadius.circular(14))),items:unique.map((s)=>DropdownMenuItem(value:s,child:Text(s,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v){if(v!=null)change(v);});
-  }
-  Widget _title(BuildContext context,String title,IconData icon){final c=Theme.of(context).colorScheme;return Row(children:[Container(width:4,height:26,decoration:BoxDecoration(color:c.primary,borderRadius:BorderRadius.circular(4))),const SizedBox(width:10),Icon(icon,color:c.tertiary),const SizedBox(width:8),Text(title,style:Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight:FontWeight.w800))]);}
-  Widget _metric(BuildContext context, String title, String value, IconData icon, Color color) {
-    final c = Theme.of(context).colorScheme;
-    return SizedBox(
-      width: 210,
-      child: Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: c.outlineVariant),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: .1),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: Icon(icon, color: color),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: Theme.of(context).textTheme.bodySmall),
-                    const SizedBox(height: 4),
-                    Text(
-                      value,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-  Widget _empty(BuildContext context,String title,String message){final c=Theme.of(context).colorScheme;return Padding(padding:const EdgeInsets.all(20),child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.query_stats_rounded,size:42,color:c.tertiary),const SizedBox(height:12),Text(title,textAlign:TextAlign.center,style:Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w800)),const SizedBox(height:8),Text(message,textAlign:TextAlign.center,style:Theme.of(context).textTheme.bodyMedium?.copyWith(color:c.onSurfaceVariant))]));}
-}
-
-class _Point {
-  const _Point(this.date,this.qty,this.source,this.dateField,this.qtyField);
-  final DateTime date;final double qty;final String source,dateField,qtyField;
-}
-
-class _LinePainter extends CustomPainter {
-  const _LinePainter({required this.points,required this.line,required this.grid,required this.text});
-  final List<MapEntry<DateTime,double>> points;final Color line,grid,text;
-  @override
-  void paint(Canvas canvas,Size size){
-    if(points.isEmpty)return;
-    const l=48.0,r=10.0,t=12.0,b=32.0;
-    final rect=Rect.fromLTRB(l,t,size.width-r,size.height-b);if(rect.width<=0||rect.height<=0)return;
-    final max=points.map((p)=>p.value).fold<double>(0,(a,v)=>a>v?a:v);final cap=max<=0?1.0:max*1.12;
-    final tp=TextPainter(textDirection:TextDirection.ltr,maxLines:1);final style=TextStyle(color:text,fontSize:10);final gp=Paint()..color=grid..strokeWidth=1;
-    for(var i=0;i<=4;i++){final y=rect.bottom-rect.height*i/4;canvas.drawLine(Offset(rect.left,y),Offset(rect.right,y),gp);final v=cap*i/4;tp.text=TextSpan(text:v>=1000?'${(v/1000).toStringAsFixed(1)}k':v.toStringAsFixed(v<10?1:0),style:style);tp.layout();tp.paint(canvas,Offset(0,y-tp.height/2));}
-    final path=Path(),area=Path();final paint=Paint()..color=line..strokeWidth=2.8..style=PaintingStyle.stroke..strokeJoin=StrokeJoin.round..strokeCap=StrokeCap.round;
-    final fill=Paint()..color=line.withValues(alpha:.12);
-    for(var i=0;i<points.length;i++){final x=points.length==1?rect.center.dx:rect.left+rect.width*i/(points.length-1);final y=rect.bottom-points[i].value/cap*rect.height;if(i==0){path.moveTo(x,y);area.moveTo(x,rect.bottom);area.lineTo(x,y);}else{path.lineTo(x,y);area.lineTo(x,y);}}
-    area.lineTo(points.length==1?rect.center.dx:rect.right,rect.bottom);area.close();canvas.drawPath(area,fill);canvas.drawPath(path,paint);
-    final dot=Paint()..color=line;for(var i=0;i<points.length;i++){final x=points.length==1?rect.center.dx:rect.left+rect.width*i/(points.length-1);final y=rect.bottom-points[i].value/cap*rect.height;canvas.drawCircle(Offset(x,y),3.5,dot);}
-    final ids=points.length<=5?List<int>.generate(points.length,(i)=>i):<int>[0,points.length~/2,points.length-1];
-    for(final i in ids){final d=points[i].key;tp.text=TextSpan(text:'${d.day.toString().padLeft(2,'0')}/${d.month.toString().padLeft(2,'0')}',style:style);tp.layout();final x=points.length==1?rect.center.dx-tp.width/2:(rect.left+rect.width*i/(points.length-1)-tp.width/2).clamp(rect.left,rect.right-tp.width);tp.paint(canvas,Offset(x.toDouble(),rect.bottom+8));}
-  }
-  @override
-  bool shouldRepaint(covariant _LinePainter old)=>old.points!=points||old.line!=line||old.grid!=grid||old.text!=text;
-}
-).firstMatch(normalized);
-    if(monthDate!=null){
-      const months={'jan':1,'feb':2,'mar':3,'apr':4,'may':5,'jun':6,'jul':7,'aug':8,'sep':9,'oct':10,'nov':11,'dec':12};
-      final day=int.tryParse(monthDate.group(1)!);
-      final month=months[monthDate.group(2)!.substring(0,3).toLowerCase()];
-      var year=int.tryParse(monthDate.group(3)!);
-      if(year!=null&&year<100)year+=2000;
-      if(day!=null&&month!=null&&year!=null)return _safeDate(year,month,day);
-    }
-    final parts=v.replaceAll('.','/').replaceAll('-','/').split('/');
-    if(parts.length!=3)return null;
-    final a=int.tryParse(parts[0]),b=int.tryParse(parts[1]),d=int.tryParse(parts[2]);
-    if(a==null||b==null||d==null)return null;
-    if(parts[0].length==4)return _safeDate(a,b,d);
-    if(a>12)return _safeDate(d<100?2000+d:d,b,a);
-    if(b>12)return _safeDate(d<100?2000+d:d,a,b);
-    return _safeDate(d<100?2000+d:d,b,a);
-  }
-  static DateTime? _safeDate(int y,int m,int d){if(y<1900||m<1||m>12||d<1||d>31)return null;final x=DateTime(y,m,d);return x.year==y&&x.month==m&&x.day==d?x:null;}
-  static double? _parseQty(String? v){if(v==null||v.trim().isEmpty)return null;final n=v.replaceAll(',','').replaceAll(RegExp(r'[^0-9.\-]'),'');if(n.isEmpty||n=='-'||n=='.')return null;return double.tryParse(n);}
-  static DateTime _week(DateTime d){final x=DateTime(d.year,d.month,d.day);return x.subtract(Duration(days:x.weekday-1));}
-  static String _fmt(double n)=>n==n.roundToDouble()?n.toInt().toString():n.toStringAsFixed(2);
-  static String _date(DateTime d)=>'${d.day.toString().padLeft(2,'0')}/${d.month.toString().padLeft(2,'0')}/${d.year}';
-
-  Widget _drop(BuildContext context,String label,String value,List<String> options,ValueChanged<String> change){
-    final c=Theme.of(context).colorScheme;final unique=options.toSet().toList();final safe=unique.contains(value)?value:unique.first;
-    return DropdownButtonFormField<String>(value:safe,isExpanded:true,decoration:InputDecoration(labelText:label,filled:true,fillColor:c.surfaceContainerHighest.withValues(alpha:.35),contentPadding:const EdgeInsets.symmetric(horizontal:12,vertical:12),border:OutlineInputBorder(borderRadius:BorderRadius.circular(14))),items:unique.map((s)=>DropdownMenuItem(value:s,child:Text(s,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v){if(v!=null)change(v);});
   }
   Widget _title(BuildContext context,String title,IconData icon){final c=Theme.of(context).colorScheme;return Row(children:[Container(width:4,height:26,decoration:BoxDecoration(color:c.primary,borderRadius:BorderRadius.circular(4))),const SizedBox(width:10),Icon(icon,color:c.tertiary),const SizedBox(width:8),Text(title,style:Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight:FontWeight.w800))]);}
   Widget _metric(BuildContext context, String title, String value, IconData icon, Color color) {
