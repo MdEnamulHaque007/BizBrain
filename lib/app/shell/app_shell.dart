@@ -1,7 +1,7 @@
 import 'package:bizbrain/app/shell/navigation_items.dart';
 import 'package:bizbrain/core/constants/app_constants.dart';
-import 'package:bizbrain/core/utils/responsive.dart';
 import 'package:bizbrain/core/update/app_update_service.dart';
+import 'package:bizbrain/core/utils/responsive.dart';
 import 'package:bizbrain/features/authentication/domain/entities/app_user.dart';
 import 'package:bizbrain/features/authentication/presentation/providers/auth_providers.dart';
 import 'package:bizbrain/features/authentication/presentation/providers/auth_state.dart';
