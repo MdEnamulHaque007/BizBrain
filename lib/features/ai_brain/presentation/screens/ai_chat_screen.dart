@@ -1,8 +1,10 @@
+import 'dart:convert';
+
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 
 class AiChatScreen extends ConsumerStatefulWidget {
   const AiChatScreen({super.key});
@@ -35,8 +37,6 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     });
 
     try {
-      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
-          .httpsCallable('aiChat');
       final context = {
         'sources': sources.map((source) => {
           'name': source.sourceLabel,
@@ -45,21 +45,25 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
           'rows': source.rows,
         }).toList(),
       };
-      final result = await callable.call(<String, dynamic>{
-        'question': question,
-        'businessContext': context,
-      });
-      final data = Map<String, dynamic>.from(result.data as Map);
+
+      final response = await http.post(
+        Uri.parse('/api/ai-chat'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'question': question,
+          'businessContext': context,
+        }),
+      );
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(data['error']?.toString() ?? 'AI backend request failed.');
+      }
+
       final answer = data['answer']?.toString().trim();
       if (!mounted) return;
       setState(() => _messages.add(_ChatMessage(
         text: answer?.isNotEmpty == true ? answer! : 'AI backend কোনো উত্তর দেয়নি।',
-        isUser: false,
-      )));
-    } on FirebaseFunctionsException catch (error) {
-      if (!mounted) return;
-      setState(() => _messages.add(_ChatMessage(
-        text: 'AI backend error: ${error.message ?? error.code}',
         isUser: false,
       )));
     } catch (error) {
