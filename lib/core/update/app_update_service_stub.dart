@@ -6,6 +6,8 @@ class AppUpdateStatus {
 }
 
 class AppUpdateService {
+  static Future<void> initialize() async {}
+
   static Future<AppUpdateStatus> check() async =>
       const AppUpdateStatus(updateAvailable: false);
 
