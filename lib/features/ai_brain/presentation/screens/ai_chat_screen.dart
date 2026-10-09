@@ -1,10 +1,8 @@
-import 'dart:convert';
-
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 
 class AiChatScreen extends ConsumerStatefulWidget {
   const AiChatScreen({super.key});
@@ -21,6 +19,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
       isUser: false,
     ),
   ];
+  bool _isSending = false;
 
   @override
   void dispose() {
@@ -30,14 +29,16 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
 
   Future<void> _send(List<SheetCacheModel> sources) async {
     final question = _controller.text.trim();
-    if (question.isEmpty) return;
+    if (question.isEmpty || _isSending) return;
+
     setState(() {
       _messages.add(_ChatMessage(text: question, isUser: true));
       _controller.clear();
+      _isSending = true;
     });
 
     try {
-      final context = {
+      final businessContext = {
         'sources': sources.map((source) => {
           'name': source.sourceLabel,
           'sheetName': source.sheetName,
@@ -46,32 +47,41 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
         }).toList(),
       };
 
-      final response = await http.post(
-        Uri.parse('/api/ai-chat'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'question': question,
-          'businessContext': context,
-        }),
-      );
+      // Callable Functions attach the signed-in user's Firebase Auth token.
+      final callable = FirebaseFunctions.instanceFor(
+        region: 'asia-south1',
+      ).httpsCallable('aiChat');
 
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception(data['error']?.toString() ?? 'AI backend request failed.');
-      }
+      final response = await callable.call(<String, dynamic>{
+        'question': question,
+        'businessContext': businessContext,
+      });
 
+      final data = Map<String, dynamic>.from(response.data as Map);
       final answer = data['answer']?.toString().trim();
       if (!mounted) return;
       setState(() => _messages.add(_ChatMessage(
         text: answer?.isNotEmpty == true ? answer! : 'AI backend কোনো উত্তর দেয়নি।',
         isUser: false,
       )));
+    } on FirebaseFunctionsException catch (error) {
+      if (!mounted) return;
+      final message = switch (error.code) {
+        'unauthenticated' => 'AI Chat ব্যবহার করতে প্রথমে লগইন করুন।',
+        'invalid-argument' => 'প্রশ্ন বা business data সঠিকভাবে পাঠানো যায়নি।',
+        'not-found' => 'Firebase-এর aiChat function deploy করা নেই বা পাওয়া যায়নি।',
+        'unavailable' => 'AI সেবা এখন পাওয়া যাচ্ছে না। কিছুক্ষণ পরে আবার চেষ্টা করুন।',
+        _ => 'AI অনুরোধ ব্যর্থ হয়েছে (${error.code}): ${error.message ?? 'অজানা ত্রুটি'}',
+      };
+      setState(() => _messages.add(_ChatMessage(text: message, isUser: false)));
     } catch (error) {
       if (!mounted) return;
       setState(() => _messages.add(_ChatMessage(
         text: 'AI backend-এর সাথে সংযোগ করা যায়নি: $error',
         isUser: false,
       )));
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
@@ -125,8 +135,10 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                     ),
                     const SizedBox(width: 8),
                     IconButton.filled(
-                      onPressed: () => _send(items),
-                      icon: const Icon(Icons.send),
+                      onPressed: _isSending ? null : () => _send(items),
+                      icon: _isSending
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.send),
                       tooltip: 'Send',
                     ),
                   ],
