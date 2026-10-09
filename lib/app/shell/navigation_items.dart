@@ -54,6 +54,12 @@ abstract final class NavigationItems {
       path: RoutePaths.aiBrain,
     ),
     NavDestination(
+      label: 'AI Chat',
+      icon: Icons.chat_bubble_outline,
+      selectedIcon: Icons.chat_bubble,
+      path: RoutePaths.aiChat,
+    ),
+    NavDestination(
       label: 'Business rules',
       icon: Icons.rule_outlined,
       selectedIcon: Icons.rule,
