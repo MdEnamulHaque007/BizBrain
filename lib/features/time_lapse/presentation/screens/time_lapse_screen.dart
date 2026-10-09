@@ -1,6 +1,6 @@
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
-import 'package:flutter/material.dart';
+import 'dart:math' as math;\nimport 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class TimeLapseScreen extends ConsumerStatefulWidget {
@@ -72,6 +72,7 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
     final average=filtered.isEmpty?0.0:total/filtered.length;
     final peak=filtered.isEmpty?0.0:filtered.map((p)=>p.qty).reduce((a,b)=>a>b?a:b);
     final lowest=filtered.isEmpty?0.0:filtered.map((p)=>p.qty).reduce((a,b)=>a<b?a:b);
+    final anomalies=_detectAnomalies(graph);
     return Container(
       decoration:BoxDecoration(gradient:LinearGradient(begin:Alignment.topCenter,end:Alignment.bottomCenter,colors:[c.primary.withValues(alpha:.035),c.surface])),
       child:ListView(padding:const EdgeInsets.all(20),children:[
@@ -131,6 +132,18 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
               SizedBox(height:250,width:double.infinity,child:CustomPaint(painter:_LinePainter(points:graph,line:c.primary,grid:c.outlineVariant,text:c.onSurfaceVariant))),
               const SizedBox(height:8),Text('X-axis: $_group · Y-axis: summed quantity',style:theme.textTheme.bodySmall?.copyWith(color:c.onSurfaceVariant))
             ]))),
+          const SizedBox(height:18),_title(context,'Anomaly detection',Icons.warning_amber_rounded),const SizedBox(height:12),
+          Card(elevation:0,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18),side:BorderSide(color:c.outlineVariant)),child:Padding(padding:const EdgeInsets.all(16),child:anomalies.isEmpty
+            ?Row(children:[Icon(Icons.check_circle_outline,color:c.tertiary),const SizedBox(width:10),Expanded(child:Text(graph.length<4?'Need at least 4 time periods to detect unusual changes.':'No unusual quantity spikes or drops detected.',style:theme.textTheme.bodyMedium))])
+            :Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              Text('${anomalies.length} unusual period(s) detected',style:theme.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w800)),
+              const SizedBox(height:8),
+              ...anomalies.take(8).map((entry)=>Padding(padding:const EdgeInsets.symmetric(vertical:5),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                Icon(entry.value>entry.key.value?Icons.trending_up_rounded:Icons.trending_down_rounded,color:entry.value>entry.key.value?c.tertiary:c.error,size:20),
+                const SizedBox(width:8),
+                Expanded(child:Text('${_date(entry.key)} · ${_fmt(entry.value)} quantity — ${entry.value>entry.key.value?'above':'below'} usual level',style:theme.textTheme.bodyMedium))
+              ])))
+            ]))),
           const SizedBox(height:18),_title(context,'Timeline records',Icons.view_timeline_rounded),const SizedBox(height:12),
           if(filtered.isNotEmpty)Card(elevation:0,clipBehavior:Clip.antiAlias,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18),side:BorderSide(color:c.outlineVariant)),child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:DataTable(
             headingRowColor:WidgetStatePropertyAll(c.primaryContainer.withValues(alpha:.7)),
@@ -141,6 +154,19 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
         ]
       ]),
     );
+  }
+
+  List<MapEntry<DateTime,double>> _detectAnomalies(List<MapEntry<DateTime,double>> points) {
+    if (points.length < 4) return const [];
+    final values=points.map((p)=>p.value).toList();
+    final mean=values.reduce((a,b)=>a+b)/values.length;
+    final variance=values.map((v)=>(v-mean)*(v-mean)).reduce((a,b)=>a+b)/values.length;
+    final deviation=Math.sqrt(variance);
+    if (deviation==0) return const [];
+    // Flag periods at least two standard deviations from the mean.
+    return points.where((p)=>(p.value-mean).abs()>=2*deviation)
+      .map((p)=>MapEntry(p.key,p.value))
+      .toList();
   }
 
   List<_Point> _filter(List<_Point> points) {
