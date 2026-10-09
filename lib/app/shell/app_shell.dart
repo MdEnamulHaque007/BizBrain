@@ -1,6 +1,7 @@
 import 'package:bizbrain/app/shell/navigation_items.dart';
 import 'package:bizbrain/core/constants/app_constants.dart';
 import 'package:bizbrain/core/utils/responsive.dart';
+import 'package:bizbrain/core/update/app_update_service.dart';
 import 'package:bizbrain/features/authentication/domain/entities/app_user.dart';
 import 'package:bizbrain/features/authentication/presentation/providers/auth_providers.dart';
 import 'package:bizbrain/features/authentication/presentation/providers/auth_state.dart';
@@ -128,14 +129,51 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   void _showHelp() {
     _scaffoldKey.currentState?.closeDrawer();
+    final updateFuture = AppUpdateService.check();
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Help'),
-        content: const Text(
-          'Welcome to BizBrain Help. Help resources will be available here.',
+        title: const Text('Help & Updates'),
+        content: FutureBuilder<AppUpdateStatus>(
+          future: updateFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 12),
+                  Text('Checking for updates...'),
+                ],
+              );
+            }
+            if (snapshot.data?.updateAvailable == true) {
+              return const Text(
+                'New update available. Tap Update Now to load the latest BizBrain version.',
+              );
+            }
+            return const Text(
+              'BizBrain is up to date. No new update is available right now.',
+            );
+          },
         ),
         actions: <Widget>[
+          FutureBuilder<AppUpdateStatus>(
+            future: updateFuture,
+            builder: (context, snapshot) {
+              if (snapshot.data?.updateAvailable != true) {
+                return const SizedBox.shrink();
+              }
+              return FilledButton(
+                onPressed: () => AppUpdateService.applyUpdate(),
+                child: const Text('Update Now'),
+              );
+            },
+          ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Close'),
