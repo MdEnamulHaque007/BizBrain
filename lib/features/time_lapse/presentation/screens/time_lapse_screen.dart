@@ -160,7 +160,7 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
 
   Widget _drop(BuildContext context,String label,String value,List<String> options,ValueChanged<String> change){
     final c=Theme.of(context).colorScheme;final unique=options.toSet().toList();final safe=unique.contains(value)?value:unique.first;
-    return DropdownButtonFormField<String>(value:safe,isExpanded:true,decoration:InputDecoration(labelText:label,filled:true,fillColor:c.surfaceContainerHighest.withValues(alpha:.35),contentPadding:const EdgeInsets.symmetric(horizontal:12,vertical:12),border:OutlineInputBorder(borderRadius:BorderRadius.circular(14))),items:unique.map((s)=>DropdownMenuItem(value:s,child:Text(s,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v){if(v!=null)change(v);});
+    return DropdownButtonFormField<String>(initialValue:safe,isExpanded:true,decoration:InputDecoration(labelText:label,filled:true,fillColor:c.surfaceContainerHighest.withValues(alpha:.35),contentPadding:const EdgeInsets.symmetric(horizontal:12,vertical:12),border:OutlineInputBorder(borderRadius:BorderRadius.circular(14))),items:unique.map((s)=>DropdownMenuItem(value:s,child:Text(s,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v){if(v!=null)change(v);});
   }
   Widget _title(BuildContext context,String title,IconData icon){final c=Theme.of(context).colorScheme;return Row(children:[Container(width:4,height:26,decoration:BoxDecoration(color:c.primary,borderRadius:BorderRadius.circular(4))),const SizedBox(width:10),Icon(icon,color:c.tertiary),const SizedBox(width:8),Text(title,style:Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight:FontWeight.w800))]);}
   Widget _metric(BuildContext context, String title, String value, IconData icon, Color color) {
