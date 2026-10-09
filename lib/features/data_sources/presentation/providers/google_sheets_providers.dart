@@ -39,6 +39,11 @@ final Provider<SheetCacheManager> sheetCacheManagerProvider =
 /// All locally cached Google Sheets sources, loaded when the feature starts.
 final FutureProvider<List<SheetCacheModel>> sourcesListProvider =
     FutureProvider<List<SheetCacheModel>>((ref) async {
+      // Routes can be rendered in tests or during startup before Hive is ready.
+      // Do not let an unavailable local cache crash the whole app shell.
+      if (!Hive.isBoxOpen('sheet_cache_v1')) {
+        return <SheetCacheModel>[];
+      }
       final sources = await ref.read(sheetCacheManagerProvider).listSources();
       sources.sort((a, b) => b.fetchedAt.compareTo(a.fetchedAt));
       return sources;
