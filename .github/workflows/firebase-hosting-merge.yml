@@ -16,7 +16,9 @@ jobs:
           channel: stable
           cache: true
       - name: Generate web version marker
-        run: echo "${GITHUB_SHA}" > web/version.txt
+        run: |
+          echo "${GITHUB_SHA}" > web/version.txt
+          sed -i "s/__BIZBRAIN_BUILD_VERSION__/${GITHUB_SHA}/g" web/index.html
       - run: flutter pub get && flutter build web --release
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
