@@ -12,28 +12,35 @@ class AppUpdateStatus {
 class AppUpdateService {
   static String? _loadedVersion;
 
-  static Future<AppUpdateStatus> check() async {
+  static Future<void> initialize() async {
+    final status = await _readLatest();
+    _loadedVersion = status;
+  }
+
+  static Future<String?> _readLatest() async {
     try {
       final response = await web.window
           .fetch('version.txt?t=${DateTime.now().millisecondsSinceEpoch}'.toJS)
           .toDart;
-      if (!response.ok) {
-        return const AppUpdateStatus(updateAvailable: false);
-      }
-
+      if (!response.ok) return null;
       final latest = (await response.text().toDart).toDart.trim();
-      if (latest.isEmpty) {
-        return const AppUpdateStatus(updateAvailable: false);
-      }
-
-      _loadedVersion ??= latest;
-      return AppUpdateStatus(
-        updateAvailable: latest != _loadedVersion,
-        version: latest,
-      );
+      return latest.isEmpty ? null : latest;
     } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<AppUpdateStatus> check() async {
+    final latest = await _readLatest();
+    if (latest == null) {
       return const AppUpdateStatus(updateAvailable: false);
     }
+
+    _loadedVersion ??= latest;
+    return AppUpdateStatus(
+      updateAvailable: latest != _loadedVersion,
+      version: latest,
+    );
   }
 
   static Future<void> applyUpdate() async {
