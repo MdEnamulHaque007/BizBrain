@@ -80,9 +80,16 @@ class _AppShellState extends ConsumerState<AppShell> {
               header: user != null
                   ? _AccountHeader(user: user)
                   : const _GuestHeader(),
-              footer: user != null
-                  ? _LogoutFooter(onLogout: _logout)
-                  : _ExitGuestFooter(onExit: _exitGuest),
+              footer: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  _HelpFooter(onHelp: _showHelp),
+                  if (user != null)
+                    _LogoutFooter(onLogout: _logout)
+                  else
+                    _ExitGuestFooter(onExit: _exitGuest),
+                ],
+              ),
               children: <Widget>[
                 for (final destination in NavigationItems.destinations)
                   NavigationDrawerDestination(
@@ -119,6 +126,25 @@ class _AppShellState extends ConsumerState<AppShell> {
     context.go(NavigationItems.destinations[index].path);
   }
 
+  void _showHelp() {
+    _scaffoldKey.currentState?.closeDrawer();
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Help'),
+        content: const Text(
+          'Welcome to BizBrain Help. Help resources will be available here.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Leaves guest mode. The container is captured first: the shell is
   /// disposed as soon as the router redirects back to the sign-in screen.
   void _exitGuest() {
@@ -144,6 +170,24 @@ class _AppShellState extends ConsumerState<AppShell> {
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(state.message!)));
     }
+  }
+}
+
+class _HelpFooter extends StatelessWidget {
+  const _HelpFooter({required this.onHelp});
+
+  final VoidCallback onHelp;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+      child: ListTile(
+        leading: const Icon(Icons.help_outline),
+        title: const Text('Help'),
+        onTap: onHelp,
+      ),
+    );
   }
 }
 
