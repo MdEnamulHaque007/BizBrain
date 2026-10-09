@@ -3,7 +3,6 @@ import 'package:bizbrain/app/screens/activity_logs_screen.dart';
 import 'package:bizbrain/app/screens/settings_screen.dart';
 import 'package:bizbrain/app/shell/app_shell.dart';
 import 'package:bizbrain/app/shell/navigation_items.dart';
-import 'package:bizbrain/core/widgets/feature_placeholder_view.dart';
 import 'package:bizbrain/features/authentication/presentation/screens/login_screen.dart';
 import 'package:bizbrain/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:bizbrain/features/data_sources/presentation/screens/data_sources_screen.dart';
