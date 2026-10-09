@@ -41,6 +41,72 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <script>
+    (() => {
+      let currentVersion = null;
+      let updateShown = false;
+
+      async function readVersion() {
+        const response = await fetch('version.txt?t=' + Date.now(), {
+          cache: 'no-store',
+        });
+        if (!response.ok) return null;
+        return (await response.text()).trim();
+      }
+
+      function showUpdateNotice() {
+        if (updateShown) return;
+        updateShown = true;
+
+        const notice = document.createElement('div');
+        notice.setAttribute('role', 'status');
+        notice.style.cssText =
+          'position:fixed;left:16px;right:16px;bottom:16px;z-index:2147483647;' +
+          'display:flex;align-items:center;justify-content:space-between;gap:12px;' +
+          'padding:14px 16px;border-radius:12px;background:#1f2937;color:white;' +
+          'font:14px system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.25)';
+        notice.innerHTML =
+          '<span><strong>New update available</strong><br>' +
+          '<small>A new BizBrain version is ready.</small></span>' +
+          '<button type="button" style="border:0;border-radius:8px;padding:9px 12px;' +
+          'font-weight:600;cursor:pointer">Update Now</button>';
+
+        notice.querySelector('button').addEventListener('click', async () => {
+          const registrations = await navigator.serviceWorker?.getRegistrations?.() ?? [];
+          await Promise.all(registrations.map((registration) => registration.unregister()));
+          if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((key) => caches.delete(key)));
+          }
+          window.location.reload();
+        });
+
+        document.body.appendChild(notice);
+      }
+
+      async function checkForUpdate() {
+        try {
+          const latestVersion = await readVersion();
+          if (!latestVersion) return;
+          if (currentVersion === null) {
+            currentVersion = latestVersion;
+            return;
+          }
+          if (latestVersion !== currentVersion) showUpdateNotice();
+        } catch (_) {
+          // Update checks are best-effort and must never interrupt the app.
+        }
+      }
+
+      window.addEventListener('load', () => {
+        checkForUpdate();
+        setInterval(checkForUpdate, 60000);
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') checkForUpdate();
+        });
+      });
+    })();
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
