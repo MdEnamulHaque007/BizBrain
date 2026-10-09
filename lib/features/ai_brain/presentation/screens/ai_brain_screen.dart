@@ -1,3 +1,5 @@
+import 'package:bizbrain/features/ai_brain/domain/context/production_flow_mapper.dart';
+import 'package:bizbrain/features/data_sources/data/google_sheets/sheet_table.dart';
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
 import 'package:flutter/material.dart';
@@ -119,8 +121,13 @@ class _AiBrainScreenState extends ConsumerState<AiBrainScreen> {
       body: sources.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Could not load business data: $e')),
-        data: (items) => Column(
+        data: (items) => DefaultTabController(
+          length: 2,
+          child: Column(
           children: [
+            const TabBar(tabs: [Tab(icon: Icon(Icons.chat_outlined), text: 'Chat'), Tab(icon: Icon(Icons.table_chart_outlined), text: 'Mapped Flow')]),
+            Expanded(child: TabBarView(children: [
+              Column(children: [
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
@@ -171,9 +178,60 @@ class _AiBrainScreenState extends ConsumerState<AiBrainScreen> {
             ),
           ],
         ),
+              _MappedFlowTab(sources: items),
+            ])),
+          ],
+        ),
+        ),
       ),
     );
   }
+}
+
+class _MappedFlowTab extends StatelessWidget {
+  const _MappedFlowTab({required this.sources});
+  final List<SheetCacheModel> sources;
+
+  @override
+  Widget build(BuildContext context) {
+    final tables = <ProductionStage, SheetTable>{};
+    for (final source in sources) {
+      final stage = _stage(source);
+      if (stage == null || tables.containsKey(stage)) continue;
+      final headers = source.columns;
+      tables[stage] = SheetTable(
+        headers: headers,
+        rows: source.rows.map((r) => headers.map((h) => r[h] ?? '').toList()).toList(),
+        metadata: SheetSourceMetadata(spreadsheetId: source.sourceId, sheetName: source.sheetName, requestedRange: source.dataRange, sourceUrl: source.sheetUrl, loadedAt: source.fetchedAt),
+      );
+    }
+    final records = ProductionFlowMapper().map(tables);
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Mapped Production Flow', style: Theme.of(context).textTheme.headlineSmall),
+        Text('${tables.length} stages detected • ${records.length} mapped combinations'),
+        const SizedBox(height: 12),
+        Expanded(child: SingleChildScrollView(child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(
+          columns: const [DataColumn(label: Text('PO No')), DataColumn(label: Text('Article')), DataColumn(label: Text('Color')), DataColumn(label: Text('PO'), numeric: true), DataColumn(label: Text('Cutting'), numeric: true), DataColumn(label: Text('Sewing'), numeric: true), DataColumn(label: Text('Lasting'), numeric: true), DataColumn(label: Text('FG'), numeric: true), DataColumn(label: Text('Export'), numeric: true)],
+          rows: records.map((r) => DataRow(cells: [DataCell(Text(r.key.poNo)), DataCell(Text(r.key.article)), DataCell(Text(r.key.color)), DataCell(Text(_q(r.poQuantity))), DataCell(Text(_q(r.cuttingQuantity))), DataCell(Text(_q(r.sewingQuantity))), DataCell(Text(_q(r.lastingQuantity))), DataCell(Text(_q(r.fgQuantity))), DataCell(Text(_q(r.exportQuantity)))] )).toList(),
+        )))),
+      ]),
+    );
+  }
+
+  static ProductionStage? _stage(SheetCacheModel s) {
+    final n = '${s.sourceLabel ?? ''} ${s.sheetName ?? ''}'.toLowerCase();
+    if (n.contains('cutting')) return ProductionStage.cutting;
+    if (n.contains('sewing')) return ProductionStage.sewing;
+    if (n.contains('lasting') || n.contains('production')) return ProductionStage.lasting;
+    if (n.contains('finished good') || n.contains('fg')) return ProductionStage.fg;
+    if (n.contains('export') || n.contains('shipment')) return ProductionStage.export;
+    if (n.contains('purchase order') || RegExp(r'(^|\\s)p\\.?o\\.?(\\s|$)').hasMatch(n)) return ProductionStage.po;
+    return null;
+  }
+
+  static String _q(double v) => v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
 }
 
 class _ChatMessage {
