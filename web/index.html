@@ -43,7 +43,7 @@
   -->
   <script>
     (() => {
-      let currentVersion = null;
+      let currentVersion = '__BIZBRAIN_BUILD_VERSION__';
       let updateShown = false;
 
       async function readVersion() {
@@ -88,10 +88,6 @@
         try {
           const latestVersion = await readVersion();
           if (!latestVersion) return;
-          if (currentVersion === null) {
-            currentVersion = latestVersion;
-            return;
-          }
           if (latestVersion !== currentVersion) showUpdateNotice();
         } catch (_) {
           // Update checks are best-effort and must never interrupt the app.
