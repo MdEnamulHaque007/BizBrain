@@ -74,6 +74,7 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
     final peak=filtered.isEmpty?0.0:filtered.map((p)=>p.qty).reduce((a,b)=>a>b?a:b);
     final lowest=filtered.isEmpty?0.0:filtered.map((p)=>p.qty).reduce((a,b)=>a<b?a:b);
     final anomalies=_detectAnomalies(graph);
+    final bottlenecks=_stageTotals(filtered);
     return Container(
       decoration:BoxDecoration(gradient:LinearGradient(begin:Alignment.topCenter,end:Alignment.bottomCenter,colors:[c.primary.withValues(alpha:.035),c.surface])),
       child:ListView(padding:const EdgeInsets.all(20),children:[
@@ -145,6 +146,19 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
                 Expanded(child:Text('${_date(entry.key)} · ${_fmt(entry.value)} quantity — ${entry.value>graphAverage?'above':'below'} usual level',style:theme.textTheme.bodyMedium))
               ])))
             ]))),
+          const SizedBox(height:18),_title(context,'Bottleneck analysis',Icons.account_tree_rounded),const SizedBox(height:12),
+          Card(elevation:0,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18),side:BorderSide(color:c.outlineVariant)),child:Padding(padding:const EdgeInsets.all(16),child:bottlenecks.isEmpty
+            ?Text('No stage quantity data available for comparison.',style:theme.textTheme.bodyMedium)
+            :Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              Text('Lowest output: ${bottlenecks.first.key} · ${_fmt(bottlenecks.first.value)}',style:theme.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w800)),
+              const SizedBox(height:8),
+              ...bottlenecks.reversed.take(8).toList().reversed.map((entry)=>Padding(padding:const EdgeInsets.symmetric(vertical:4),child:Row(children:[
+                Expanded(flex:3,child:Text(entry.key,overflow:TextOverflow.ellipsis)),
+                Expanded(flex:4,child:ClipRRect(borderRadius:BorderRadius.circular(5),child:LinearProgressIndicator(value:bottlenecks.last.value<=0?0:(entry.value/bottlenecks.last.value).clamp(0.0,1.0),minHeight:8))),
+                const SizedBox(width:10),
+                Text(_fmt(entry.value),style:theme.textTheme.bodySmall)
+              ])))
+            ]))),
           const SizedBox(height:18),_title(context,'Timeline records',Icons.view_timeline_rounded),const SizedBox(height:12),
           if(filtered.isNotEmpty)Card(elevation:0,clipBehavior:Clip.antiAlias,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18),side:BorderSide(color:c.outlineVariant)),child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:DataTable(
             headingRowColor:WidgetStatePropertyAll(c.primaryContainer.withValues(alpha:.7)),
@@ -155,6 +169,15 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
         ]
       ]),
     );
+  }
+
+  List<MapEntry<String,double>> _stageTotals(List<_Point> points) {
+    final totals=<String,double>{};
+    for(final point in points) {
+      totals[point.source]=(totals[point.source]??0)+point.qty;
+    }
+    final entries=totals.entries.toList()..sort((a,b)=>a.value.compareTo(b.value));
+    return entries;
   }
 
   List<MapEntry<DateTime,double>> _detectAnomalies(List<MapEntry<DateTime,double>> points) {
