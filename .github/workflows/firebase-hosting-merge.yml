@@ -20,6 +20,17 @@ jobs:
           echo "${GITHUB_SHA}" > web/version.txt
           sed -i "s/__BIZBRAIN_BUILD_VERSION__/${GITHUB_SHA}/g" web/index.html
       - run: flutter pub get && flutter build web --release --pwa-strategy=none
+      - name: Install Functions dependencies
+        run: npm ci --prefix functions
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+      - name: Deploy Firebase Functions
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BIZBRAIN_E3A61 }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          firebase deploy --only functions --project bizbrain-e3a61 --non-interactive
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
