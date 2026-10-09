@@ -16,12 +16,19 @@ void main() {
         fetchedAt: DateTime.utc(2026, 10, 8),
         rowCount: 1,
         version: 1,
+        sourceLabel: 'Warehouse inventory',
+        sourceInput: 'https://docs.google.com/spreadsheets/d/sheet-1',
+        dataRange: 'A1:B20',
+        headerRow: 2,
       );
 
       final restored = SheetCacheModel.fromJson(cache.toJson());
 
       expect(restored, cache);
       expect(restored.hashCode, cache.hashCode);
+      expect(restored.sourceLabel, 'Warehouse inventory');
+      expect(restored.dataRange, 'A1:B20');
+      expect(restored.headerRow, 2);
     });
 
     test('copyWith and deep equality handle nested records', () {

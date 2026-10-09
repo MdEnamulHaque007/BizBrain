@@ -20,13 +20,19 @@ void main() {
       sheetName: 'Inventory',
       fetchedAt: DateTime.now(),
     );
-    final manager = SheetCacheManager(_TestCacheStorage(latest));
+    final second = _cache(
+      sourceId: 'lmnopqrstuv|Orders||1',
+      sheetName: 'Orders',
+      fetchedAt: DateTime.now().subtract(const Duration(hours: 1)),
+      rowText: 'Order item',
+    );
+    final manager = SheetCacheManager(_TestCacheStorage([latest, second]));
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           sheetCacheStorageReadyProvider.overrideWith((ref) => true),
-          cachedSourcesProvider.overrideWith((ref) async => [latest]),
+          cachedSourcesProvider.overrideWith((ref) async => [latest, second]),
           sheetCacheManagerProvider.overrideWith((ref) => manager),
         ],
         child: const MaterialApp(
@@ -38,16 +44,21 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Cached sheets'), findsOneWidget);
+    expect(find.text('Saved Google Sheets'), findsOneWidget);
     expect(find.text('Inventory'), findsWidgets);
+    expect(find.text('Orders'), findsOneWidget);
     expect(find.text('Boot'), findsOneWidget);
     expect(find.text('Connect'), findsOneWidget);
+
+    await tester.tap(find.text('Orders'));
+    await tester.pumpAndSettle();
+    expect(find.text('Order item'), findsOneWidget);
   });
 
   testWidgets('Connect loads and immediately displays sheet data', (
     tester,
   ) async {
-    final storage = _TestCacheStorage(null);
+    final storage = _TestCacheStorage([]);
     final manager = SheetCacheManager(storage);
     var requestCount = 0;
     final repository = CachedDataSourceRepository(
@@ -76,7 +87,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, 'abcdefghijk');
+    await tester.enterText(find.byType(TextField).at(1), 'abcdefghijk');
     await tester.tap(find.text('Connect'));
     await tester.pumpAndSettle();
 
@@ -93,13 +104,14 @@ SheetCacheModel _cache({
   required String sourceId,
   required String sheetName,
   required DateTime fetchedAt,
+  String rowText = 'Boot',
 }) => SheetCacheModel(
   sourceId: sourceId,
   organizationId: 'default',
   sheetUrl: 'https://docs.google.com/spreadsheets/d/abcdefghijk/gviz/tq',
   sheetName: sheetName,
-  rows: const [
-    {'Name': 'Boot', 'Qty': '4'},
+  rows: [
+    {'Name': rowText, 'Qty': '4'},
   ],
   columns: const ['Name', 'Qty'],
   fetchedAt: fetchedAt,
@@ -108,8 +120,8 @@ SheetCacheModel _cache({
 );
 
 class _TestCacheStorage implements SheetCacheStorage {
-  _TestCacheStorage(SheetCacheModel? cache)
-    : _values = cache == null ? {} : {cache.sourceId: cache};
+  _TestCacheStorage(List<SheetCacheModel> caches)
+    : _values = {for (final cache in caches) cache.sourceId: cache};
 
   final Map<String, SheetCacheModel> _values;
 

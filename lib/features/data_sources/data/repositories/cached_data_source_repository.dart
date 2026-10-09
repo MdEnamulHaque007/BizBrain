@@ -55,11 +55,23 @@ class CachedDataSourceRepository implements DataSourceRepository {
     required GoogleSheetsDataSource source,
     required String sourceId,
     required String organizationId,
+    String? sourceLabel,
+    String? sourceInput,
   }) async {
     final cached = await _cache.getCached(sourceId);
     if (cached != null && cached.organizationId == organizationId) {
       AppLogger.info('Cache HIT for sourceId: $sourceId');
-      return cached;
+      final updated = cached.copyWith(
+        sourceLabel: sourceLabel,
+        clearSourceLabel: sourceLabel == null,
+        sourceInput: sourceInput,
+        dataRange: source.dataRange,
+        headerRow: source.headerRow,
+      );
+      if (updated != cached) {
+        await _cache.saveCache(updated);
+      }
+      return updated;
     }
 
     final legacySourceId =
@@ -68,7 +80,14 @@ class CachedDataSourceRepository implements DataSourceRepository {
       final legacyCache = await _cache.getCached(legacySourceId);
       if (legacyCache != null && legacyCache.organizationId == organizationId) {
         AppLogger.info('Cache HIT for sourceId: $sourceId');
-        final migratedCache = legacyCache.copyWith(sourceId: sourceId);
+        final migratedCache = legacyCache.copyWith(
+          sourceId: sourceId,
+          sourceLabel: sourceLabel,
+          clearSourceLabel: sourceLabel == null,
+          sourceInput: sourceInput,
+          dataRange: source.dataRange,
+          headerRow: source.headerRow,
+        );
         await _cache.saveCache(migratedCache);
         await _cache.invalidate(legacySourceId);
         return migratedCache;
@@ -80,6 +99,8 @@ class CachedDataSourceRepository implements DataSourceRepository {
       source: source,
       sourceId: sourceId,
       organizationId: organizationId,
+      sourceLabel: sourceLabel,
+      sourceInput: sourceInput,
     );
   }
 
@@ -88,24 +109,31 @@ class CachedDataSourceRepository implements DataSourceRepository {
     required GoogleSheetsDataSource source,
     required String sourceId,
     required String organizationId,
+    String? sourceLabel,
+    String? sourceInput,
   }) async {
     final table = await _loader.load(source);
-    final model = SheetCacheModel(
+    return _cache.refreshSource(
       sourceId: sourceId,
-      organizationId: organizationId,
-      sheetUrl: table.metadata.sourceUrl,
-      sheetName: table.metadata.sheetName,
-      rows: table
-          .toRecords()
-          .map((r) => Map<String, String>.from(r))
-          .toList(growable: false),
-      columns: List<String>.from(table.headers),
-      fetchedAt: table.metadata.loadedAt,
-      rowCount: table.rowCount,
-      version: 1,
+      fetch: () async => SheetCacheModel(
+        sourceId: sourceId,
+        organizationId: organizationId,
+        sheetUrl: table.metadata.sourceUrl,
+        sheetName: table.metadata.sheetName,
+        rows: table
+            .toRecords()
+            .map((record) => Map<String, String>.from(record))
+            .toList(growable: false),
+        columns: List<String>.from(table.headers),
+        fetchedAt: table.metadata.loadedAt,
+        rowCount: table.rowCount,
+        version: 1,
+        sourceLabel: sourceLabel,
+        sourceInput: sourceInput,
+        dataRange: source.dataRange,
+        headerRow: source.headerRow,
+      ),
     );
-    await _cache.saveCache(model);
-    return model;
   }
 
   Future<void> deleteDataSource(String sourceId) => _cache.invalidate(sourceId);

@@ -36,17 +36,23 @@ void main() {
         source: source,
         sourceId: 'source-one',
         organizationId: 'org-one',
+        sourceLabel: 'Inventory',
+        sourceInput: 'abcdefghijk',
       );
 
       expect(fresh.rows, [
         {'Name': 'Boot', 'Qty': '4'},
       ]);
+      expect(fresh.sourceLabel, 'Inventory');
+      expect(fresh.sourceInput, 'abcdefghijk');
       expect(requestCount, 1);
       expect(
         await repository.loadDataSource(
           source: source,
           sourceId: 'source-one',
           organizationId: 'org-one',
+          sourceLabel: 'Inventory',
+          sourceInput: 'abcdefghijk',
         ),
         fresh,
       );
@@ -59,12 +65,16 @@ void main() {
       source: source,
       sourceId: 'source-one',
       organizationId: 'org-one',
+      sourceLabel: 'Inventory',
+      sourceInput: 'abcdefghijk',
     );
     expect(requestCount, 1);
     await repository.refreshDataSource(
       source: source,
       sourceId: 'source-one',
       organizationId: 'org-one',
+      sourceLabel: 'Inventory',
+      sourceInput: 'abcdefghijk',
     );
     expect(requestCount, 2);
 

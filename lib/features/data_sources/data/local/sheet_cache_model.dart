@@ -17,6 +17,10 @@ class SheetCacheModel {
     required this.fetchedAt,
     required this.rowCount,
     required this.version,
+    this.sourceLabel,
+    this.sourceInput,
+    this.dataRange,
+    this.headerRow = 1,
   });
 
   @HiveField(0)
@@ -39,6 +43,14 @@ class SheetCacheModel {
   final int rowCount;
   @HiveField(8)
   final int version;
+  @HiveField(9)
+  final String? sourceLabel;
+  @HiveField(10)
+  final String? sourceInput;
+  @HiveField(11)
+  final String? dataRange;
+  @HiveField(12)
+  final int headerRow;
 
   Map<String, dynamic> toJson() => {
     'sourceId': sourceId,
@@ -50,6 +62,10 @@ class SheetCacheModel {
     'fetchedAt': fetchedAt.toIso8601String(),
     'rowCount': rowCount,
     'version': version,
+    'sourceLabel': sourceLabel,
+    'sourceInput': sourceInput,
+    'dataRange': dataRange,
+    'headerRow': headerRow,
   };
 
   static SheetCacheModel fromJson(Map<String, dynamic> json) => SheetCacheModel(
@@ -64,6 +80,10 @@ class SheetCacheModel {
     fetchedAt: DateTime.parse(json['fetchedAt'] as String),
     rowCount: json['rowCount'] as int,
     version: json['version'] as int,
+    sourceLabel: json['sourceLabel'] as String?,
+    sourceInput: json['sourceInput'] as String?,
+    dataRange: json['dataRange'] as String?,
+    headerRow: json['headerRow'] as int? ?? 1,
   );
 
   SheetCacheModel copyWith({
@@ -76,6 +96,11 @@ class SheetCacheModel {
     DateTime? fetchedAt,
     int? rowCount,
     int? version,
+    String? sourceLabel,
+    bool clearSourceLabel = false,
+    String? sourceInput,
+    String? dataRange,
+    int? headerRow,
   }) {
     return SheetCacheModel(
       sourceId: sourceId ?? this.sourceId,
@@ -87,6 +112,10 @@ class SheetCacheModel {
       fetchedAt: fetchedAt ?? this.fetchedAt,
       rowCount: rowCount ?? this.rowCount,
       version: version ?? this.version,
+      sourceLabel: clearSourceLabel ? null : (sourceLabel ?? this.sourceLabel),
+      sourceInput: sourceInput ?? this.sourceInput,
+      dataRange: dataRange ?? this.dataRange,
+      headerRow: headerRow ?? this.headerRow,
     );
   }
 
@@ -102,7 +131,11 @@ class SheetCacheModel {
             const DeepCollectionEquality().equals(other.columns, columns) &&
             other.fetchedAt == fetchedAt &&
             other.rowCount == rowCount &&
-            other.version == version);
+            other.version == version &&
+            other.sourceLabel == sourceLabel &&
+            other.sourceInput == sourceInput &&
+            other.dataRange == dataRange &&
+            other.headerRow == headerRow);
   }
 
   @override
@@ -116,5 +149,9 @@ class SheetCacheModel {
     fetchedAt.toIso8601String(),
     rowCount,
     version,
+    sourceLabel,
+    sourceInput,
+    dataRange,
+    headerRow,
   );
 }

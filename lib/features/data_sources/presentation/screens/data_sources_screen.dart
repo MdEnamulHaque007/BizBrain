@@ -18,6 +18,11 @@ class DataSourcesScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: const [
+              Text(
+                'Google Sheets sources',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
+              ),
+              SizedBox(height: 12),
               GoogleSheetsPreviewPanel(),
               SizedBox(height: 24),
               FeaturePlaceholderView(

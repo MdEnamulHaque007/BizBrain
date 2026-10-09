@@ -37,12 +37,16 @@ final Provider<SheetCacheManager> sheetCacheManagerProvider =
     });
 
 /// All locally cached Google Sheets sources, loaded when the feature starts.
-final FutureProvider<List<SheetCacheModel>> cachedSourcesProvider =
+final FutureProvider<List<SheetCacheModel>> sourcesListProvider =
     FutureProvider<List<SheetCacheModel>>((ref) async {
-      final sources = await ref.read(sheetCacheManagerProvider).list();
+      final sources = await ref.read(sheetCacheManagerProvider).listSources();
       sources.sort((a, b) => b.fetchedAt.compareTo(a.fetchedAt));
       return sources;
     });
+
+/// Backwards-compatible provider name for the cached sheet list.
+final FutureProvider<List<SheetCacheModel>> cachedSourcesProvider =
+    sourcesListProvider;
 
 /// Cached repository for data sources.
 final Provider<CachedDataSourceRepository> cachedDataSourceRepositoryProvider =

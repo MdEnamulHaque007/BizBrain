@@ -62,6 +62,27 @@ class SheetCacheManager {
   Future<List<SheetCacheModel>> list({String? organizationId}) =>
       _storage.getAll(organizationId: organizationId);
 
+  Future<List<SheetCacheModel>> listSources({String? organizationId}) =>
+      list(organizationId: organizationId);
+
+  Future<void> deleteSource(String sourceId) => invalidate(sourceId);
+
+  Future<SheetCacheModel> refreshSource({
+    required String sourceId,
+    required Future<SheetCacheModel> Function() fetch,
+  }) async {
+    final fresh = await fetch();
+    if (fresh.sourceId != sourceId) {
+      throw ArgumentError.value(
+        fresh.sourceId,
+        'sourceId',
+        'Refreshed source ID does not match the requested source.',
+      );
+    }
+    await saveCache(fresh);
+    return fresh;
+  }
+
   Stream<SheetCacheModel?> watch(String sourceId) => _storage.watch(sourceId);
 
   // Lightweight eviction: if total JSON size for org exceeds limit, drop oldest.

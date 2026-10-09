@@ -27,9 +27,14 @@ CachedDataSourceRepository ---- cache hit ----> SheetCacheManager
 3. **Refresh** explicitly fetches the latest sheet and replaces the cached
    value.
 4. **Delete cache** removes the local copy. The next load fetches it again.
-5. Entries older than seven days are labelled stale, but remain available
+5. Use the source form to connect and save multiple sheets. Each saved source
+   retains its optional custom label, original URL/ID, tab name, range, and
+   header row. Tap a source card to display its cached rows; long-press or use
+   its action menu to refresh or delete that individual source.
+6. Cards include the saved row count and last fetched timestamp.
+7. Entries older than seven days are labelled stale, but remain available
    offline until deleted.
-6. Signing out clears local sheet caches to prevent data from surviving a
+8. Signing out clears local sheet caches to prevent data from surviving a
    user switch. `AppUser` does not currently contain organization membership,
    so sign-out clears all sheet-cache entries rather than guessing a tenant.
 

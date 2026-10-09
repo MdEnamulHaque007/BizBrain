@@ -28,6 +28,7 @@ class _GoogleSheetsPreviewPanelState
   static const int _previewRowLimit = 50;
 
   final TextEditingController _spreadsheetController = TextEditingController();
+  final TextEditingController _sourceLabelController = TextEditingController();
   final TextEditingController _sheetNameController = TextEditingController();
   final TextEditingController _rangeController = TextEditingController();
   final TextEditingController _headerRowController = TextEditingController(
@@ -51,6 +52,7 @@ class _GoogleSheetsPreviewPanelState
   @override
   void dispose() {
     _spreadsheetController.dispose();
+    _sourceLabelController.dispose();
     _sheetNameController.dispose();
     _rangeController.dispose();
     _headerRowController.dispose();
@@ -89,6 +91,10 @@ class _GoogleSheetsPreviewPanelState
         source: source,
         sourceId: sourceId,
         organizationId: organizationId,
+        sourceLabel: _sourceLabelController.text.trim().isEmpty
+            ? null
+            : _sourceLabelController.text.trim(),
+        sourceInput: _spreadsheetController.text.trim(),
       );
       final rows = loaded.rows
           .map((record) => cachedRowToList(record, loaded.columns))
@@ -110,7 +116,7 @@ class _GoogleSheetsPreviewPanelState
         _cacheModel = loaded;
         _error = null;
       });
-      ref.invalidate(cachedSourcesProvider);
+      ref.invalidate(sourcesListProvider);
     } on GoogleSheetsInputException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -161,19 +167,19 @@ class _GoogleSheetsPreviewPanelState
   void _displayCachedSource(SheetCacheModel cache) {
     _userInteracted = true;
     final sourceParts = cache.sourceId.split('|');
-    if (sourceParts.length >= 4) {
-      _spreadsheetController.text = sourceParts[0];
-      _sheetNameController.text = sourceParts[1];
-      _rangeController.text = sourceParts[2];
-      _headerRowController.text = sourceParts[3].startsWith('h')
-          ? sourceParts[3].substring(1)
-          : '1';
-    } else {
-      _spreadsheetController.text = cache.sheetUrl;
-      _sheetNameController.text = cache.sheetName ?? '';
-      _rangeController.clear();
-      _headerRowController.text = '1';
-    }
+    final legacyHasSettings = sourceParts.length >= 4;
+    final range =
+        cache.dataRange ?? (legacyHasSettings ? sourceParts[2] : null);
+    final headerRow = cache.headerRow != 1
+        ? cache.headerRow
+        : legacyHasSettings
+        ? int.tryParse(sourceParts[3].replaceFirst(RegExp(r'^h'), '')) ?? 1
+        : 1;
+    _spreadsheetController.text = cache.sourceInput ?? sourceParts.first;
+    _sourceLabelController.text = cache.sourceLabel ?? '';
+    _sheetNameController.text = cache.sheetName ?? '';
+    _rangeController.text = range ?? '';
+    _headerRowController.text = '$headerRow';
 
     final table = SheetTable(
       headers: cache.columns,
@@ -183,7 +189,7 @@ class _GoogleSheetsPreviewPanelState
       metadata: SheetSourceMetadata(
         spreadsheetId: sourceParts.first,
         sheetName: cache.sheetName,
-        requestedRange: sourceParts.length >= 4 ? sourceParts[2] : null,
+        requestedRange: range,
         sourceUrl: cache.sheetUrl,
         loadedAt: cache.fetchedAt,
       ),
@@ -193,6 +199,110 @@ class _GoogleSheetsPreviewPanelState
       _cacheModel = cache;
       _error = null;
     });
+  }
+
+  Future<void> _refreshCachedSource(SheetCacheModel cache) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final source = GoogleSheetsDataSource.parse(
+        input: cache.sourceInput ?? cache.sourceId.split('|').first,
+        sheetName: cache.sheetName,
+        dataRange:
+            cache.dataRange ??
+            (cache.sourceId.split('|').length >= 4
+                ? cache.sourceId.split('|')[2]
+                : null),
+        headerRow: cache.headerRow != 1
+            ? cache.headerRow
+            : cache.sourceId.split('|').length >= 4
+            ? int.tryParse(
+                    cache.sourceId
+                        .split('|')[3]
+                        .replaceFirst(RegExp(r'^h'), ''),
+                  ) ??
+                  1
+            : 1,
+      );
+      final refreshed = await ref
+          .read(cachedDataSourceRepositoryProvider)
+          .refreshDataSource(
+            source: source,
+            sourceId: cache.sourceId,
+            organizationId: cache.organizationId,
+            sourceLabel: cache.sourceLabel,
+            sourceInput: cache.sourceInput ?? source.spreadsheetId,
+          );
+      if (!mounted) return;
+      _displayCachedSource(refreshed);
+      ref.invalidate(sourcesListProvider);
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Failed to refresh Google Sheets source ${cache.sourceId}',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (mounted) setState(() => _error = 'Failed to refresh source: $error');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _deleteCachedSource(SheetCacheModel cache) async {
+    try {
+      await ref.read(sheetCacheManagerProvider).deleteSource(cache.sourceId);
+      if (!mounted) return;
+      if (_cacheModel?.sourceId == cache.sourceId) {
+        setState(() {
+          _cacheModel = null;
+          _table = null;
+          _sourceLabelController.clear();
+          _spreadsheetController.clear();
+          _sheetNameController.clear();
+          _rangeController.clear();
+          _headerRowController.text = '1';
+        });
+      }
+      ref.invalidate(sourcesListProvider);
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Failed to delete Google Sheets source ${cache.sourceId}',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (mounted) setState(() => _error = 'Failed to delete source: $error');
+    }
+  }
+
+  Future<void> _showSourceActions(SheetCacheModel source) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.refresh),
+              title: const Text('Refresh source'),
+              onTap: () => Navigator.pop(context, 'refresh'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Delete source'),
+              onTap: () => Navigator.pop(context, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'refresh') {
+      await _refreshCachedSource(source);
+    } else if (action == 'delete') {
+      await _deleteCachedSource(source);
+    }
   }
 
   List<String> cachedRowToList(Map<String, String> rec, List<String> headers) {
@@ -241,7 +351,7 @@ class _GoogleSheetsPreviewPanelState
     final theme = Theme.of(context);
     final table = _table;
     final cacheReady = ref.watch(sheetCacheStorageReadyProvider);
-    final cachedSources = cacheReady ? ref.watch(cachedSourcesProvider) : null;
+    final cachedSources = cacheReady ? ref.watch(sourcesListProvider) : null;
 
     return Card(
       child: Padding(
@@ -273,7 +383,16 @@ class _GoogleSheetsPreviewPanelState
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 16),
-            Text('Cached sheets', style: theme.textTheme.titleMedium),
+            TextField(
+              controller: _sourceLabelController,
+              decoration: const InputDecoration(
+                labelText: 'Source name (optional)',
+                hintText: 'e.g. Footwear inventory',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('Saved Google Sheets', style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
             if (!cacheReady)
               Text(
@@ -302,16 +421,44 @@ class _GoogleSheetsPreviewPanelState
                   return Column(
                     children: [
                       for (final source in sources)
-                        ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.table_chart_outlined),
-                          title: Text(source.sheetName ?? source.sourceId),
-                          subtitle: Text(
-                            '${source.rowCount} rows · ${_cacheStatusText(source)}',
+                        Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.table_chart_outlined),
+                            title: Text(
+                              source.sourceLabel ??
+                                  source.sheetName ??
+                                  source.sourceId,
+                            ),
+                            subtitle: Text(
+                              '${source.sheetName ?? 'Google Sheet'} · '
+                              '${source.rowCount} rows'
+                              '${source.dataRange == null ? '' : ' · ${source.dataRange}'} · '
+                              'Fetched ${source.fetchedAt.toLocal()}',
+                            ),
+                            trailing: PopupMenuButton<String>(
+                              tooltip: 'Source actions',
+                              onSelected: (action) {
+                                if (action == 'refresh') {
+                                  _refreshCachedSource(source);
+                                } else if (action == 'delete') {
+                                  _deleteCachedSource(source);
+                                }
+                              },
+                              itemBuilder: (context) => const [
+                                PopupMenuItem(
+                                  value: 'refresh',
+                                  child: Text('Refresh'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('Delete'),
+                                ),
+                              ],
+                            ),
+                            selected: _cacheModel?.sourceId == source.sourceId,
+                            onTap: () => _displayCachedSource(source),
+                            onLongPress: () => _showSourceActions(source),
                           ),
-                          selected: _cacheModel?.sourceId == source.sourceId,
-                          onTap: () => _displayCachedSource(source),
                         ),
                     ],
                   );
@@ -456,6 +603,14 @@ class _GoogleSheetsPreviewPanelState
                                       source: source,
                                       sourceId: sourceId,
                                       organizationId: organizationId,
+                                      sourceLabel:
+                                          _sourceLabelController.text
+                                              .trim()
+                                              .isEmpty
+                                          ? null
+                                          : _sourceLabelController.text.trim(),
+                                      sourceInput: _spreadsheetController.text
+                                          .trim(),
                                     );
                                 final rows = fresh.rows
                                     .map(
@@ -479,7 +634,7 @@ class _GoogleSheetsPreviewPanelState
                                   _cacheModel = fresh;
                                   _error = null;
                                 });
-                                ref.invalidate(cachedSourcesProvider);
+                                ref.invalidate(sourcesListProvider);
                               } catch (e) {
                                 if (!mounted) return;
                                 setState(() {
@@ -529,7 +684,7 @@ class _GoogleSheetsPreviewPanelState
                                   _cacheModel = null;
                                   _table = null;
                                 });
-                                ref.invalidate(cachedSourcesProvider);
+                                ref.invalidate(sourcesListProvider);
                               } catch (e) {
                                 if (!mounted) return;
                                 setState(() {

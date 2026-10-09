@@ -24,13 +24,17 @@ class SheetCacheModelAdapter extends TypeAdapter<SheetCacheModel> {
       fetchedAt: fields[6] as DateTime,
       rowCount: fields[7] as int,
       version: fields[8] as int,
+      sourceLabel: fields[9] as String?,
+      sourceInput: fields[10] as String?,
+      dataRange: fields[11] as String?,
+      headerRow: fields[12] as int? ?? 1,
     );
   }
 
   @override
   void write(BinaryWriter writer, SheetCacheModel obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.sourceId)
       ..writeByte(1)
@@ -48,6 +52,14 @@ class SheetCacheModelAdapter extends TypeAdapter<SheetCacheModel> {
       ..writeByte(7)
       ..write(obj.rowCount)
       ..writeByte(8)
-      ..write(obj.version);
+      ..write(obj.version)
+      ..writeByte(9)
+      ..write(obj.sourceLabel)
+      ..writeByte(10)
+      ..write(obj.sourceInput)
+      ..writeByte(11)
+      ..write(obj.dataRange)
+      ..writeByte(12)
+      ..write(obj.headerRow);
   }
 }

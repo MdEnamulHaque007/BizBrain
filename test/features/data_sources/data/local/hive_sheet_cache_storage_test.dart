@@ -113,4 +113,8 @@ SheetCacheModel createCache(String id, String organizationId) =>
       fetchedAt: DateTime.utc(2026, 10, 8),
       rowCount: 1,
       version: 1,
+      sourceLabel: 'Warehouse inventory',
+      sourceInput: 'https://docs.google.com/spreadsheets/d/$id',
+      dataRange: 'A1:B10',
+      headerRow: 2,
     );

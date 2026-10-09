@@ -53,6 +53,25 @@ void main() {
     expect(await manager.getCached('a'), isNull);
     expect(await manager.getCached('b'), isNotNull);
   });
+
+  test('lists, refreshes, and deletes source entries', () async {
+    final first = createCache('first', DateTime.utc(2026, 1));
+    final refreshed = createCache('first', DateTime.utc(2026, 2));
+    await manager.saveCache(first);
+
+    expect(await manager.listSources(), [first]);
+    expect(
+      await manager.refreshSource(
+        sourceId: 'first',
+        fetch: () async => refreshed,
+      ),
+      refreshed,
+    );
+    expect(await manager.getCached('first'), refreshed);
+
+    await manager.deleteSource('first');
+    expect(await manager.listSources(), isEmpty);
+  });
 }
 
 SheetCacheModel createCache(
