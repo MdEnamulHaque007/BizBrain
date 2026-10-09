@@ -3,11 +3,13 @@ import 'package:bizbrain/app/bootstrap/app_bootstrap.dart';
 import 'package:bizbrain/core/config/app_providers.dart';
 import 'package:bizbrain/core/config/firebase_initialization.dart';
 import 'package:bizbrain/core/logging/app_logger.dart';
+import 'package:bizbrain/core/update/app_update_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 Future<void> main() async {
   final initialization = await _bootstrap();
+  await AppUpdateService.initialize();
 
   runApp(
     ProviderScope(
