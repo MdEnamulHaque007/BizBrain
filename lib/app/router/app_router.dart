@@ -6,6 +6,7 @@ import 'package:bizbrain/app/screens/settings_screen.dart';
 import 'package:bizbrain/app/screens/startup_screen.dart';
 import 'package:bizbrain/app/shell/app_shell.dart';
 import 'package:bizbrain/features/ai_brain/presentation/screens/ai_brain_screen.dart';
+import 'package:bizbrain/features/ai_brain/presentation/screens/ai_chat_screen.dart';
 import 'package:bizbrain/features/authentication/presentation/providers/auth_providers.dart';
 import 'package:bizbrain/features/authentication/presentation/screens/forgot_password_screen.dart';
 import 'package:bizbrain/features/authentication/presentation/screens/login_screen.dart';
@@ -71,6 +72,7 @@ final _shellPages = <String, GoRouterWidgetBuilder>{
   RoutePaths.organizations: (_, _) => const OrganizationsScreen(),
   RoutePaths.dataSources: (_, _) => const DataSourcesScreen(),
   RoutePaths.aiBrain: (_, _) => const AiBrainScreen(),
+  RoutePaths.aiChat: (_, _) => const AiChatScreen(),
   RoutePaths.businessRules: (_, _) => const BusinessRulesScreen(),
   RoutePaths.insights: (_, _) => const InsightsScreen(),
   RoutePaths.reports: (_, _) => const ReportsScreen(),
