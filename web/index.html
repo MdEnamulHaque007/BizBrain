@@ -37,7 +37,7 @@
     // One-time migration: remove stale Flutter PWA caches/service workers so
     // existing installed BizBrain apps can load the current deployment.
     (async () => {
-      const migrationKey = 'bizbrain-pwa-cache-reset-v1';
+      const migrationKey = 'bizbrain-pwa-cache-reset-v2';
       if (localStorage.getItem(migrationKey) === 'done') return;
 
       try {
