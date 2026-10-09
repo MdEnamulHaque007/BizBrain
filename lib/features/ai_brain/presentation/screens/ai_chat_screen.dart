@@ -13,6 +13,7 @@ class AiChatScreen extends ConsumerStatefulWidget {
 
 class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   final _controller = TextEditingController();
+  final _scrollController = ScrollController();
   final _messages = <_ChatMessage>[
     const _ChatMessage(
       text: 'Ask me about your connected business data. For example: আজ Cutting কত হয়েছে?',
@@ -24,6 +25,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   @override
   void dispose() {
     _controller.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -36,6 +38,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
       _controller.clear();
       _isSending = true;
     });
+    _scrollToBottom();
 
     try {
       final businessContext = {
@@ -81,71 +84,232 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
         isUser: false,
       )));
     } finally {
-      if (mounted) setState(() => _isSending = false);
+      if (mounted) {
+        setState(() => _isSending = false);
+        _scrollToBottom();
+      }
     }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final sources = ref.watch(sourcesListProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('AI Chat')),
-      body: sources.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Could not load business data: $e')),
-        data: (items) => Column(
+      appBar: AppBar(
+        title: Row(
           children: [
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: _messages.length,
-                itemBuilder: (context, index) {
-                  final m = _messages[index];
-                  return Align(
-                    alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft,
-                    child: Container(
-                      constraints: const BoxConstraints(maxWidth: 720),
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: m.isUser ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(m.text),
-                    ),
-                  );
-                },
-              ),
-            ),
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        onSubmitted: (_) => _send(items),
-                        decoration: const InputDecoration(
-                          hintText: 'Ask about your business data…',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton.filled(
-                      onPressed: _isSending ? null : () => _send(items),
-                      icon: _isSending
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.send),
-                      tooltip: 'Send',
-                    ),
-                  ],
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [colors.primary, colors.tertiary],
                 ),
+                borderRadius: BorderRadius.circular(13),
               ),
+              child: Icon(Icons.auto_awesome_rounded, color: colors.onPrimary),
+            ),
+            const SizedBox(width: 12),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('AI Chat'),
+                Text('Business data assistant',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400)),
+              ],
             ),
           ],
+        ),
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              colors.primary.withValues(alpha: 0.045),
+              colors.surface,
+              colors.tertiary.withValues(alpha: 0.035),
+            ],
+          ),
+        ),
+        child: sources.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text('Could not load business data: $e'),
+            ),
+          ),
+          data: (items) => Column(
+            children: [
+              Expanded(
+                child: ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+                  itemCount: _messages.length + (_isSending ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (_isSending && index == _messages.length) {
+                      return Align(
+                        alignment: Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: colors.surface,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: colors.outlineVariant),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 17,
+                                height: 17,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: colors.tertiary,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              const Text('AI is thinking…'),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                    final message = _messages[index];
+                    return Align(
+                      alignment: message.isUser
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: Container(
+                        constraints: const BoxConstraints(maxWidth: 720),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 13,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: message.isUser
+                              ? LinearGradient(
+                                  colors: [colors.primary, colors.tertiary],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                )
+                              : null,
+                          color: message.isUser ? null : colors.surface,
+                          borderRadius: BorderRadius.only(
+                            topLeft: const Radius.circular(20),
+                            topRight: const Radius.circular(20),
+                            bottomLeft: Radius.circular(message.isUser ? 20 : 5),
+                            bottomRight: Radius.circular(message.isUser ? 5 : 20),
+                          ),
+                          border: message.isUser
+                              ? null
+                              : Border.all(color: colors.outlineVariant),
+                          boxShadow: [
+                            BoxShadow(
+                              color: colors.shadow.withValues(alpha: 0.045),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          message.text,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            height: 1.5,
+                            color: message.isUser ? colors.onPrimary : colors.onSurface,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              SafeArea(
+                top: false,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    border: Border(top: BorderSide(color: colors.outlineVariant)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: colors.shadow.withValues(alpha: 0.04),
+                        blurRadius: 16,
+                        offset: const Offset(0, -4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _controller,
+                          minLines: 1,
+                          maxLines: 5,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _send(items),
+                          decoration: InputDecoration(
+                            hintText: 'Ask about your business data…',
+                            filled: true,
+                            fillColor: colors.surfaceContainerHighest.withValues(alpha: 0.55),
+                            prefixIcon: Icon(Icons.chat_bubble_outline_rounded,
+                                color: colors.primary),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              borderSide: BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              borderSide: BorderSide(color: colors.outlineVariant),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              borderSide: BorderSide(color: colors.primary, width: 1.5),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      SizedBox(
+                        height: 52,
+                        width: 52,
+                        child: IconButton.filled(
+                          onPressed: _isSending ? null : () => _send(items),
+                          style: IconButton.styleFrom(
+                            backgroundColor: colors.primary,
+                            foregroundColor: colors.onPrimary,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(17),
+                            ),
+                          ),
+                          icon: const Icon(Icons.send_rounded),
+                          tooltip: 'Send message',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
