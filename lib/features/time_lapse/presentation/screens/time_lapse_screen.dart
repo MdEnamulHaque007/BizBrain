@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
 import 'package:flutter/material.dart';
@@ -68,7 +70,13 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
       grouped[d]=(grouped[d]??0)+p.qty;
     }
     final graph=grouped.entries.toList()..sort((a,b)=>a.key.compareTo(b.key));
+    final graphAverage=graph.isEmpty?0.0:graph.map((p)=>p.value).reduce((a,b)=>a+b)/graph.length;
     final total=filtered.fold<double>(0,(sum,p)=>sum+p.qty);
+    final average=filtered.isEmpty?0.0:total/filtered.length;
+    final peak=filtered.isEmpty?0.0:filtered.map((p)=>p.qty).reduce((a,b)=>a>b?a:b);
+    final lowest=filtered.isEmpty?0.0:filtered.map((p)=>p.qty).reduce((a,b)=>a<b?a:b);
+    final anomalies=_detectAnomalies(graph);
+    final bottlenecks=_stageTotals(filtered);
     return Container(
       decoration:BoxDecoration(gradient:LinearGradient(begin:Alignment.topCenter,end:Alignment.bottomCenter,colors:[c.primary.withValues(alpha:.035),c.surface])),
       child:ListView(padding:const EdgeInsets.all(20),children:[
@@ -115,6 +123,9 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
         else ...[
           Wrap(spacing:12,runSpacing:12,children:[
             _metric(context,'Total quantity',_fmt(total),Icons.inventory_2_outlined,c.primary),
+            _metric(context,'Average quantity',_fmt(average),Icons.functions_rounded,c.secondary),
+            _metric(context,'Peak quantity',_fmt(peak),Icons.trending_up_rounded,c.tertiary),
+            _metric(context,'Lowest quantity',_fmt(lowest),Icons.trending_down_rounded,c.error),
             _metric(context,'Matching rows','${filtered.length}',Icons.table_rows_rounded,c.tertiary),
             _metric(context,'Stages','${selected.map(_label).toSet().length}',Icons.account_tree_outlined,c.secondary),
           ]),
@@ -124,6 +135,31 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
             :Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
               SizedBox(height:250,width:double.infinity,child:CustomPaint(painter:_LinePainter(points:graph,line:c.primary,grid:c.outlineVariant,text:c.onSurfaceVariant))),
               const SizedBox(height:8),Text('X-axis: $_group · Y-axis: summed quantity',style:theme.textTheme.bodySmall?.copyWith(color:c.onSurfaceVariant))
+            ]))),
+          const SizedBox(height:18),_title(context,'Anomaly detection',Icons.warning_amber_rounded),const SizedBox(height:12),
+          Card(elevation:0,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18),side:BorderSide(color:c.outlineVariant)),child:Padding(padding:const EdgeInsets.all(16),child:anomalies.isEmpty
+            ?Row(children:[Icon(Icons.check_circle_outline,color:c.tertiary),const SizedBox(width:10),Expanded(child:Text(graph.length<4?'Need at least 4 time periods to detect unusual changes.':'No unusual quantity spikes or drops detected.',style:theme.textTheme.bodyMedium))])
+            :Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              Text('${anomalies.length} unusual period(s) detected',style:theme.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w800)),
+              const SizedBox(height:8),
+              ...anomalies.take(8).map((entry)=>Padding(padding:const EdgeInsets.symmetric(vertical:5),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                Icon(entry.value>graphAverage?Icons.trending_up_rounded:Icons.trending_down_rounded,color:entry.value>graphAverage?c.tertiary:c.error,size:20),
+                const SizedBox(width:8),
+                Expanded(child:Text('${_date(entry.key)} · ${_fmt(entry.value)} quantity — ${entry.value>graphAverage?'above':'below'} usual level',style:theme.textTheme.bodyMedium))
+              ])))
+            ]))),
+          const SizedBox(height:18),_title(context,'Bottleneck analysis',Icons.account_tree_rounded),const SizedBox(height:12),
+          Card(elevation:0,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18),side:BorderSide(color:c.outlineVariant)),child:Padding(padding:const EdgeInsets.all(16),child:bottlenecks.isEmpty
+            ?Text('No stage quantity data available for comparison.',style:theme.textTheme.bodyMedium)
+            :Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              Text('Lowest output: ${bottlenecks.first.key} · ${_fmt(bottlenecks.first.value)}',style:theme.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w800)),
+              const SizedBox(height:8),
+              ...bottlenecks.reversed.take(8).toList().reversed.map((entry)=>Padding(padding:const EdgeInsets.symmetric(vertical:4),child:Row(children:[
+                Expanded(flex:3,child:Text(entry.key,overflow:TextOverflow.ellipsis)),
+                Expanded(flex:4,child:ClipRRect(borderRadius:BorderRadius.circular(5),child:LinearProgressIndicator(value:bottlenecks.last.value<=0?0:(entry.value/bottlenecks.last.value).clamp(0.0,1.0),minHeight:8))),
+                const SizedBox(width:10),
+                Text(_fmt(entry.value),style:theme.textTheme.bodySmall)
+              ])))
             ]))),
           const SizedBox(height:18),_title(context,'Timeline records',Icons.view_timeline_rounded),const SizedBox(height:12),
           if(filtered.isNotEmpty)Card(elevation:0,clipBehavior:Clip.antiAlias,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18),side:BorderSide(color:c.outlineVariant)),child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:DataTable(
@@ -135,6 +171,28 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
         ]
       ]),
     );
+  }
+
+  List<MapEntry<String,double>> _stageTotals(List<_Point> points) {
+    final totals=<String,double>{};
+    for(final point in points) {
+      totals[point.source]=(totals[point.source]??0)+point.qty;
+    }
+    final entries=totals.entries.toList()..sort((a,b)=>a.value.compareTo(b.value));
+    return entries;
+  }
+
+  List<MapEntry<DateTime,double>> _detectAnomalies(List<MapEntry<DateTime,double>> points) {
+    if (points.length < 4) return const [];
+    final values=points.map((p)=>p.value).toList();
+    final mean=values.reduce((a,b)=>a+b)/values.length;
+    final variance=values.map((v)=>(v-mean)*(v-mean)).reduce((a,b)=>a+b)/values.length;
+    final deviation=math.sqrt(variance);
+    if (deviation==0) return const [];
+    // Flag periods at least two standard deviations from the mean.
+    return points.where((p)=>(p.value-mean).abs()>=2*deviation)
+      .map((p)=>MapEntry(p.key,p.value))
+      .toList();
   }
 
   List<_Point> _filter(List<_Point> points) {
