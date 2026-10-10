@@ -3,12 +3,14 @@ import 'dart:math';
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
 import 'package:bizbrain/features/organizations/presentation/providers/organization_providers.dart';
+import 'package:bizbrain/features/time_lapse/application/export_service.dart';
 import 'package:bizbrain/features/time_lapse/application/playback_controller.dart';
 import 'package:bizbrain/features/time_lapse/domain/tl_frame.dart';
 import 'package:bizbrain/features/time_lapse/domain/tl_frame_factory.dart';
 import 'package:bizbrain/features/time_lapse/presentation/widgets/animated_kpi_card.dart';
 import 'package:bizbrain/features/time_lapse/presentation/widgets/multi_stage_line_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,6 +28,7 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
   String _group = 'Day';
   bool _showMovingAverage = false;
   late final PlaybackController _playback;
+  final GlobalKey _chartBoundaryKey = GlobalKey();
   String _lastFrameKey = '';
 
   static const _dateAliases = ['date','timestamp','createdat','updatedat','cuttingdate','sewingdate','lastingdate','productiondate','issuedate','shipmentdate','exportdate','entrydate','entered date','entry date','created date','order date','delivery date','expected date','ship date','completion date'];
@@ -198,13 +201,16 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
                   Padding(padding:const EdgeInsets.fromLTRB(16,40,16,8),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
                     _playbackBar(context),
                     const SizedBox(height:8),
-                    MultiStageLineChart(
-                      series: _buildStageSeries(activeFiltered),
-                      showMovingAverage: _showMovingAverage,
-                      movingAverageSeries: _showMovingAverage
-                          ? _computeMovingAverage(activeFiltered, 7)
-                          : null,
-                      height: height,
+                    RepaintBoundary(
+                      key: _chartBoundaryKey,
+                      child: MultiStageLineChart(
+                        series: _buildStageSeries(activeFiltered),
+                        showMovingAverage: _showMovingAverage,
+                        movingAverageSeries: _showMovingAverage
+                            ? _computeMovingAverage(activeFiltered, 7)
+                            : null,
+                        height: height,
+                      ),
                     ),
                     const SizedBox(height:8),Text('X-axis: $_group · Y-axis: summed quantity · Pinch to zoom',style:theme.textTheme.bodySmall?.copyWith(color:c.onSurfaceVariant)),
                     const SizedBox(height:4),
@@ -373,6 +379,18 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
                         ? () => setState(() => _playback.reset())
                         : null,
                     icon: const Icon(Icons.first_page_rounded),
+                  ),
+                  IconButton(
+                    tooltip: 'Export chart as PNG',
+                    onPressed: enabled
+                        ? () => _exportPng()
+                        : null,
+                    icon: const Icon(Icons.image_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Export data as CSV',
+                    onPressed: enabled ? () => _exportCsv() : null,
+                    icon: const Icon(Icons.table_view_rounded),
                   ),
                 ],
               ),
@@ -596,25 +614,160 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
   }
 
   void _openExport(List<_Point> filtered) {
-    final csv=StringBuffer()..writeln('date,source,quantity,dateField,quantityField');
-    for(final p in filtered){csv.writeln('${_date(p.date)},${p.source},${_fmt(p.qty)},${p.dateField},${p.qtyField}');}
+    final csv = _buildCsv(filtered);
+    final csvFilename = _exportName('csv');
+    final pngFilename = _exportName('png');
     showModalBottomSheet<void>(context:context,builder:(sheetContext)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
       const SizedBox(height:12),
-      ListTile(leading:const Icon(Icons.description_rounded),title:const Text('Export report'),subtitle:Text('${filtered.length} rows · CSV')),
-      const ListTile(
-        leading:Icon(Icons.table_chart_rounded),
-        title:Text('Copy CSV to clipboard'),
-        trailing:Icon(Icons.chevron_right_rounded),
-      ),
-      Padding(padding:const EdgeInsets.all(16),child:SizedBox(width:double.infinity,child:FilledButton.icon(
-        onPressed:(){
-          Clipboard.setData(ClipboardData(text:csv.toString()));
+      ListTile(leading:const Icon(Icons.description_rounded),title:const Text('Export report'),subtitle:Text('${filtered.length} processed rows')),
+      ListTile(
+        leading:const Icon(Icons.copy_rounded),
+        title:const Text('Copy CSV to clipboard'),
+        onTap:(){
+          Clipboard.setData(ClipboardData(text:csv));
           Navigator.pop(sheetContext);
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('CSV copied to clipboard')));
+          _snack('CSV copied to clipboard');
         },
-        icon:const Icon(Icons.copy_rounded),label:const Text('Copy CSV'),
-      ))),
+      ),
+      ListTile(
+        leading:const Icon(Icons.download_rounded),
+        title:const Text('Download CSV'),
+        subtitle:const Text('bizbrain-timelapse-*.csv'),
+        onTap:(){
+          Navigator.pop(sheetContext);
+          if (ExportService.downloadText(csv, csvFilename)) {
+            _snack('CSV download started');
+          } else {
+            _copyFallback(csv);
+          }
+        },
+      ),
+      ListTile(
+        leading:const Icon(Icons.image_outlined),
+        title:const Text('Download chart as PNG'),
+        subtitle:const Text('bizbrain-timelapse-*.png'),
+        onTap:(){
+          Navigator.pop(sheetContext);
+          _exportPngTarget(pngFilename);
+        },
+      ),
+      const SizedBox(height:12),
     ])));
+  }
+
+  /// Per-stage CSV: one date column, one column per stage, then the total.
+  String _buildCsv(List<_Point> filtered) {
+    final stages = _buildStageSeries(filtered);
+    final byDate = <DateTime, Map<String, double>>{};
+    for (final s in stages) {
+      for (final p in s.points) {
+        if (p.value == 0) continue;
+        byDate.putIfAbsent(p.date, () => <String, double>{})[s.stageName] = p.value;
+      }
+    }
+    final dates = byDate.keys.toList()..sort();
+    final names = stages.map((s) => s.stageName).toList();
+    final out = StringBuffer()..write('date');
+    for (final name in names) {
+      out.write(',"${name.replaceAll('"', '""')}"');
+    }
+    out.writeln(',total');
+    for (final d in dates) {
+      var total = 0.0;
+      out.write(_date(d));
+      final row = byDate[d];
+      for (final name in names) {
+        final v = row?[name] ?? 0;
+        total += v;
+        out.write(',${_fmt(v)}');
+      }
+      out.writeln(',${_fmt(total)}');
+    }
+    if (dates.isEmpty) {
+      out.writeln('No matching date and quantity rows');
+    }
+    return out.toString();
+  }
+
+  void _exportCsv() {
+    if (!_playback.isEnabled || _playback.frames.isEmpty) return;
+    final csv = _buildCsv(_currentFilteredPoints());
+    if (ExportService.downloadText(csv, _exportName('csv'))) {
+      _snack('CSV download started');
+    } else {
+      _copyFallback(csv);
+    }
+  }
+
+  Future<void> _exportPng() async {
+    if (!_playback.isEnabled) return;
+    await _exportPngTarget(_exportName('png'));
+  }
+
+  Future<void> _exportPngTarget(String filename) async {
+    if (_playback.isPlaying) _playback.pause();
+    await WidgetsBinding.instance.endOfFrame;
+    final renderObject = _chartBoundaryKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderRepaintBoundary) {
+      _snack('Chart not ready to capture yet');
+      return;
+    }
+    final ok = await ExportService.capturePng(renderObject, filename);
+    _snack(
+      ok
+          ? 'PNG captured: $filename'
+          : 'PNG capture works on the web build only',
+    );
+  }
+
+  void _copyFallback(String csv) {
+    Clipboard.setData(ClipboardData(text: csv));
+    _snack('CSV copied to clipboard');
+  }
+
+  List<_Point> _currentFilteredPoints() {
+    final orgId = ref.read(effectiveOrganizationProvider)?.id ?? '';
+    final cache = ref.read(sourcesListProvider(orgId));
+    final sources = cache.value ?? const <SheetCacheModel>[];
+    final selected = _selectedLabels.isEmpty
+        ? sources.where(_isProduction).toList()
+        : sources.where((s) => _selectedLabels.contains(_label(s))).toList();
+    final raw = <_Point>[];
+    for (final s in selected) {
+      final df = _dateField != 'Auto detect' && s.columns.contains(_dateField)
+          ? _dateField
+          : _best(s.columns, _dateAliases);
+      final qf = _qtyField != 'Auto detect' && s.columns.contains(_qtyField)
+          ? _qtyField
+          : _best(s.columns, _qtyAliases, rows: s.rows);
+      if (df == null || qf == null) continue;
+      for (final row in s.rows) {
+        final date = _parseDate(row[df]);
+        final qty = _parseQty(row[qf]);
+        if (date != null && qty != null) {
+          raw.add(_Point(date, qty, _label(s), df, qf));
+        }
+      }
+    }
+    return _filter(raw);
+  }
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _exportName(String ext) {
+    final ts = DateTime.now();
+    final stamp =
+        '${ts.year}${ts.month.toString().padLeft(2,'0')}'
+        '${ts.day.toString().padLeft(2,'0')}'
+        '${ts.hour.toString().padLeft(2,'0')}'
+        '${ts.minute.toString().padLeft(2,'0')}'
+        '${ts.second.toString().padLeft(2,'0')}';
+    return 'bizbrain-timelapse-$stamp.$ext';
   }
 
   Widget _frameKpi(BuildContext context, String label, double value, IconData icon,
