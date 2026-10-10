@@ -1,5 +1,6 @@
 import 'dart:js_interop';
 
+import 'package:flutter/foundation.dart';
 import 'package:web/web.dart' as web;
 
 import 'update_check_logic.dart';
@@ -13,7 +14,12 @@ class AppUpdateService {
   static final UpdateCheckLogic _logic = UpdateCheckLogic(
     read: (key) async => web.window.localStorage.getItem(key),
     write: (key, value) async {
-      web.window.localStorage.setItem(key, value);
+      try {
+        web.window.localStorage.setItem(key, value);
+        debugPrint('[UpdateCheck] stored $key = $value');
+      } catch (e) {
+        debugPrint('[UpdateCheck] failed to store $key: $e');
+      }
     },
     fetchLatest: _readLatest,
   );

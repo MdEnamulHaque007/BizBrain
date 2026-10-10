@@ -86,7 +86,7 @@ class _GoogleSheetsPreviewPanelState
       );
 
       final sourceId = _sourceId(source);
-      final organizationId = ref.read(activeOrganizationProvider)?.id;
+      final organizationId = ref.read(effectiveOrganizationProvider)?.id;
       if (organizationId == null || organizationId.isEmpty) {
         setState(() {
           _error = 'Select an organization before connecting a Google Sheet.';
@@ -164,7 +164,7 @@ class _GoogleSheetsPreviewPanelState
       if (!ref.read(sheetCacheStorageReadyProvider)) {
         return;
       }
-      final organizationId = ref.read(activeOrganizationProvider)?.id ?? '';
+      final organizationId = ref.read(effectiveOrganizationProvider)?.id ?? '';
       // Without an organization context (guest mode) the cache must not be
       // read: it may hold a previous tenant's data.
       if (organizationId.isEmpty) return;
@@ -397,7 +397,7 @@ class _GoogleSheetsPreviewPanelState
     final theme = Theme.of(context);
     final table = _table;
     final cacheReady = ref.watch(sheetCacheStorageReadyProvider);
-    final organizationId = ref.watch(activeOrganizationProvider)?.id ?? '';
+    final organizationId = ref.watch(effectiveOrganizationProvider)?.id ?? '';
     final cachedSources = cacheReady && organizationId.isNotEmpty
         ? ref.watch(sourcesListProvider(organizationId))
         : null;
@@ -703,7 +703,7 @@ class _GoogleSheetsPreviewPanelState
                               );
                               final sourceId = _sourceId(source);
                               final organizationId =
-                                  ref.read(activeOrganizationProvider)?.id;
+                                  ref.read(effectiveOrganizationProvider)?.id;
                               if (organizationId == null ||
                                   organizationId.isEmpty) {
                                 setState(() {

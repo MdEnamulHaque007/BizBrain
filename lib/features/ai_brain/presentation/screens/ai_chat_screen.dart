@@ -109,7 +109,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     // Only the active organization's cached sheets may feed the chat context.
-    final organizationId = ref.watch(activeOrganizationProvider)?.id ?? '';
+    final organizationId = ref.watch(effectiveOrganizationProvider)?.id ?? '';
     final sources = ref.watch(sourcesListProvider(organizationId));
     return Scaffold(
       appBar: AppBar(

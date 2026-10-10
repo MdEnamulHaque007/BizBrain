@@ -33,9 +33,9 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
         leading: Container(margin: const EdgeInsets.all(9),
           decoration: BoxDecoration(gradient: LinearGradient(colors: [c.primary,c.tertiary]), borderRadius: BorderRadius.circular(12)),
           child: Icon(Icons.timelapse_rounded,color:c.onPrimary)),
-        actions: [IconButton(tooltip:'Reload sources',onPressed:((){final orgId=ref.read(activeOrganizationProvider)?.id??'';ref.invalidate(sourcesListProvider(orgId));}),icon:const Icon(Icons.refresh_rounded))],
+        actions: [IconButton(tooltip:'Reload sources',onPressed:((){final orgId=ref.read(effectiveOrganizationProvider)?.id??'';ref.invalidate(sourcesListProvider(orgId));}),icon:const Icon(Icons.refresh_rounded))],
       ),
-      body: ref.watch(sourcesListProvider(ref.watch(activeOrganizationProvider)?.id ?? '')).when(
+      body: ref.watch(sourcesListProvider(ref.watch(effectiveOrganizationProvider)?.id ?? '')).when(
         loading:()=>const Center(child:CircularProgressIndicator()),
         error:(e,_)=>Center(child:Padding(padding:const EdgeInsets.all(24),child:Text('Could not load Google Sheets cache: $e'))),
         data:(all)=>_report(context,all),

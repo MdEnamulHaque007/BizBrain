@@ -73,11 +73,23 @@ void main() {
     expect(store['bizbrain_loaded_version'], 'sha-deadbeef');
   });
 
-  test('initialize stores the version silently without a notification',
+  test('initialize stores the version and check time silently',
       () async {
     await logic.initialize();
 
     expect(store['bizbrain_loaded_version'], 'sha-deadbeef');
+    expect(store['bizbrain_last_update_check'], isNotNull);
+  });
+
+  test('initialize applies the cooldown so the next check does not fetch',
+      () async {
+    await logic.initialize();
+    fetchCalls = 0;
+
+    final status = await logic.check();
+
+    expect(status.updateAvailable, isFalse);
+    expect(fetchCalls, 0);
   });
 
   test('acknowledge records the new version and keeps the next check quiet',

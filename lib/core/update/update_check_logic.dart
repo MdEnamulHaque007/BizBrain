@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// Outcome of an update check against the deployed version.
 class AppUpdateStatus {
   const AppUpdateStatus({required this.updateAvailable, this.version});
@@ -31,31 +33,51 @@ class UpdateCheckLogic {
   static const _checkTimeKey = 'bizbrain_last_update_check';
   static const _cooldownMs = 24 * 60 * 60 * 1000; // 24 hours
 
-  /// First load: store the version silently, no notification.
+  /// First load: store the version and the check time silently, so the
+  /// 24-hour cooldown is already active from the first launch and no update
+  /// notification is shown on a fresh install.
   Future<void> initialize() async {
     final latest = await fetchLatest();
-    if (latest != null) await write(_versionKey, latest);
+    if (latest == null) {
+      debugPrint('[UpdateCheck] initialize: version fetch failed');
+      return;
+    }
+    final time = DateTime.now().millisecondsSinceEpoch.toString();
+    await write(_versionKey, latest);
+    await write(_checkTimeKey, time);
+    debugPrint('[UpdateCheck] initialize: stored version=$latest, time=$time');
   }
 
   Future<AppUpdateStatus> check() async {
-    if (!await _shouldCheck()) {
+    final stored = await read(_versionKey);
+    final last = await read(_checkTimeKey);
+    final shouldCheck = await _shouldCheck();
+    debugPrint(
+      '[UpdateCheck] check: stored=$stored, last=$last, shouldCheck=$shouldCheck',
+    );
+    if (!shouldCheck) {
       return const AppUpdateStatus(updateAvailable: false);
     }
+    // Mark immediately (before the network fetch) so a crash or timeout still
+    // applies the cooldown and prevents a notification loop.
     await _markChecked();
 
     final latest = await fetchLatest();
     if (latest == null) {
+      debugPrint('[UpdateCheck] result: updateAvailable=false (no latest)');
       return const AppUpdateStatus(updateAvailable: false);
     }
 
-    final stored = await read(_versionKey);
     if (stored == null) {
       await write(_versionKey, latest);
+      debugPrint('[UpdateCheck] result: updateAvailable=false (first run)');
       return const AppUpdateStatus(updateAvailable: false);
     }
     if (stored == latest) {
+      debugPrint('[UpdateCheck] result: updateAvailable=false (up to date)');
       return const AppUpdateStatus(updateAvailable: false);
     }
+    debugPrint('[UpdateCheck] result: updateAvailable=true (latest=$latest)');
     return AppUpdateStatus(updateAvailable: true, version: latest);
   }
 

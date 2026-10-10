@@ -11,7 +11,7 @@ class AiBrainScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final organizationId = ref.watch(activeOrganizationProvider)?.id ?? '';
+    final organizationId = ref.watch(effectiveOrganizationProvider)?.id ?? '';
     final sources = ref.watch(sourcesListProvider(organizationId));
     final colors = Theme.of(context).colorScheme;
     return Scaffold(

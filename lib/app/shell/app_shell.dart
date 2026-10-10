@@ -6,6 +6,7 @@ import 'package:bizbrain/core/utils/responsive.dart';
 import 'package:bizbrain/features/authentication/domain/entities/app_user.dart';
 import 'package:bizbrain/features/authentication/presentation/providers/auth_providers.dart';
 import 'package:bizbrain/features/authentication/presentation/providers/auth_state.dart';
+import 'package:bizbrain/features/organizations/presentation/providers/organization_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -49,6 +50,9 @@ class _AppShellState extends ConsumerState<AppShell> {
   Widget build(BuildContext context) {
     final compact = AppBreakpoints.isCompact(context);
     final expanded = AppBreakpoints.isExpanded(context);
+    // Keeps the effective-organization persistence listener alive for the
+    // whole session.
+    ref.watch(organizationPersistenceProvider);
     final user = ref.watch(
       authControllerProvider.select((state) => state.user),
     );

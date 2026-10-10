@@ -160,3 +160,13 @@ See the Step 1.5 report for the exact command results. In short:
 * A web build/`flutter run` succeeding is **not** evidence of live Firebase
   connectivity; only the startup screen showing `Firebase configured` after a
   configured run demonstrates the SDK accepted the options.
+
+## Deploying with Firebase config
+
+The deployed bundle MUST include Firebase --dart-define values.
+Use the helper script instead of `firebase deploy` directly:
+
+  .\scripts\build-deploy.ps1
+
+Never run `firebase deploy --only hosting` without a fresh
+`flutter build web --release --dart-define=...` run first.

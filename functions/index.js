@@ -1,7 +1,7 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const OpenAI = require("openai");
 
 initializeApp();
@@ -61,4 +61,98 @@ exports.getAiModelSettings = onCall({ region: "asia-south1" }, async (request) =
   const doc = await db.collection("ai_model_settings").doc(request.auth.uid).get();
   const data = doc.data() || {};
   return { provider: data.provider || "openai", model: data.model || "gpt-5.6" };
+});
+
+const OWNER_ROLES = new Set(["owner", "admin"]);
+
+function normalizeOrganizationName(raw) {
+  const name = String(raw ?? "").trim();
+  if (!name || name.length > 60) {
+    throw new HttpsError("invalid-argument", "name is required and at most 60 characters.");
+  }
+  return name;
+}
+
+exports.createOrganization = onCall({ region: "asia-south1" }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in is required.");
+  const name = normalizeOrganizationName(request.data?.name);
+  const uid = request.auth.uid;
+  const now = new Date();
+  const orgRef = db.collection("organizations").doc();
+  await db.runTransaction(async (tx) => {
+    tx.set(orgRef, {
+      name,
+      ownerId: uid,
+      memberIds: [uid],
+      status: "active",
+      createdAt: now,
+      createdBy: uid,
+    });
+    tx.set(orgRef.collection("members").doc(uid), {
+      userId: uid,
+      role: "owner",
+      status: "active",
+      joinedAt: now,
+    });
+  });
+  return { id: orgRef.id, name };
+});
+
+exports.listOrganizations = onCall({ region: "asia-south1" }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in is required.");
+  const uid = request.auth.uid;
+  const memberships = await db
+    .collectionGroup("members")
+    .where("userId", "==", uid)
+    .where("status", "==", "active")
+    .get();
+  const organizations = [];
+  for (const membership of memberships.docs) {
+    const organizationId = membership.ref.path.split("/")[1];
+    const doc = await db.collection("organizations").doc(organizationId).get();
+    if (!doc.exists || doc.data().status !== "active") continue;
+    const data = doc.data();
+    organizations.push({
+      id: doc.id,
+      name: data.name,
+      ownerId: data.ownerId,
+      memberIds: data.memberIds || [],
+      status: data.status,
+      createdAt: data.createdAt,
+    });
+  }
+  return { organizations };
+});
+
+exports.addMember = onCall({ region: "asia-south1" }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in is required.");
+  const organizationId = String(request.data?.orgId ?? "").trim();
+  const userId = String(request.data?.userId ?? "").trim();
+  const rawRole = String(request.data?.role ?? "member").trim();
+  if (!organizationId) throw new HttpsError("invalid-argument", "orgId is required.");
+  if (!userId) throw new HttpsError("invalid-argument", "userId is required.");
+  if (!["owner", "admin", "manager", "member", "viewer"].includes(rawRole)) {
+    throw new HttpsError("invalid-argument", "role must be one of: owner, admin, manager, member, viewer.");
+  }
+  const requesterUid = request.auth.uid;
+  const orgRef = db.collection("organizations").doc(organizationId);
+  await db.runTransaction(async (tx) => {
+    const orgDoc = await tx.get(orgRef);
+    if (!orgDoc.exists) {
+      throw new HttpsError("not-found", "Organization does not exist.");
+    }
+    const requesterMember = await tx.get(orgRef.collection("members").doc(requesterUid));
+    const requesterData = requesterMember.data() || {};
+    if (!OWNER_ROLES.has(requesterData.role)) {
+      throw new HttpsError("permission-denied", "Only owners and admins can add members.");
+    }
+    tx.set(orgRef.collection("members").doc(userId), {
+      userId,
+      role: rawRole,
+      status: "active",
+      joinedAt: new Date(),
+    });
+    tx.update(orgRef, { memberIds: FieldValue.arrayUnion([userId]) });
+  });
+  return { organizationId, userId };
 });
