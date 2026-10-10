@@ -1,6 +1,6 @@
 import 'package:bizbrain/features/data_sources/data/google_sheets/sheet_table.dart';
 
-enum ProductionStage { po, cutting, sewing, lasting, fg, export }
+enum ProductionStage { po, cutting, sewing, lasting, fg, export, stock }
 
 class ProductionFlowKey {
   const ProductionFlowKey({
@@ -22,26 +22,23 @@ class ProductionFlowKey {
 class ProductionFlowRecord {
   ProductionFlowRecord({
     required this.key,
-    this.date,
     this.poQuantity = 0,
     this.cuttingQuantity = 0,
     this.sewingQuantity = 0,
     this.lastingQuantity = 0,
     this.fgQuantity = 0,
     this.exportQuantity = 0,
+    this.stockQuantity = 0,
   });
 
   final ProductionFlowKey key;
-
-  /// The PO row's date value (raw cell text, e.g. `24/05/2026`), `null` when
-  /// the sheet had no readable date column.
-  String? date;
   double poQuantity;
   double cuttingQuantity;
   double sewingQuantity;
   double lastingQuantity;
   double fgQuantity;
   double exportQuantity;
+  double stockQuantity;
 }
 
 class ProductionFlowMapper {
@@ -69,18 +66,11 @@ class ProductionFlowMapper {
     'ordered quantity',
     'pairs',
     'units',
-  ];
-  static const _dateAliases = <String>[
-    'date',
-    'po date',
-    'order date',
-    'ship date',
-    'shipment date',
-    'delivery date',
-    'expected date',
-    'completion date',
-    'production date',
-    'etd',
+    'stock',
+    'stock qty',
+    'stock quantity',
+    'available',
+    'available qty',
   ];
 
   /// Pattern used to detect a Purchase Order sheet from its name.
@@ -118,8 +108,6 @@ class ProductionFlowMapper {
           key.value,
           () => ProductionFlowRecord(key: key),
         );
-        final date = _value(normalized, _dateAliases);
-        if (date.isNotEmpty) record.date ??= date;
         final quantity = _number(_value(normalized, _quantityAliases));
         _addQuantity(record, entry.key, quantity);
       }
@@ -146,6 +134,8 @@ class ProductionFlowMapper {
         record.fgQuantity += quantity;
       case ProductionStage.export:
         record.exportQuantity += quantity;
+      case ProductionStage.stock:
+        record.stockQuantity += quantity;
     }
   }
 

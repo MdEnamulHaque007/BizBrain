@@ -170,13 +170,13 @@ class _MappedProductionFlowView extends StatelessWidget {
                               DataColumn(label: Text('PO No')),
                               DataColumn(label: Text('Article')),
                               DataColumn(label: Text('Color')),
-                              DataColumn(label: Text('Date')),
                               DataColumn(label: Text('PO'), numeric: true),
                               DataColumn(label: Text('Cutting'), numeric: true),
                               DataColumn(label: Text('Sewing'), numeric: true),
                               DataColumn(label: Text('Lasting'), numeric: true),
                               DataColumn(label: Text('FG'), numeric: true),
                               DataColumn(label: Text('Export'), numeric: true),
+                              DataColumn(label: Text('Stock'), numeric: true),
                             ],
                             rows: records.asMap().entries.map((entry) {
                               final r = entry.value;
@@ -205,13 +205,13 @@ class _MappedProductionFlowView extends StatelessWidget {
                                       ],
                                     ),
                                   ),
-                                  DataCell(Text(r.date?.isNotEmpty == true ? r.date! : '—')),
                                   DataCell(_QuantityCell(value: _qty(r.poQuantity), color: colors.primary)),
                                   DataCell(_QuantityCell(value: _qty(r.cuttingQuantity), color: colors.secondary)),
                                   DataCell(_QuantityCell(value: _qty(r.sewingQuantity), color: colors.tertiary)),
                                   DataCell(_QuantityCell(value: _qty(r.lastingQuantity), color: colors.primary)),
                                   DataCell(_QuantityCell(value: _qty(r.fgQuantity), color: colors.secondary)),
                                   DataCell(_QuantityCell(value: _qty(r.exportQuantity), color: colors.tertiary)),
+                                  DataCell(_QuantityCell(value: _qty(r.stockQuantity), color: colors.primary)),
                                 ],
                               );
                             }).toList(growable: false),
@@ -233,6 +233,7 @@ class _MappedProductionFlowView extends StatelessWidget {
     if (name.contains('lasting') || name.contains('production')) return ProductionStage.lasting;
     if (name.contains('finished good') || name.contains('fg')) return ProductionStage.fg;
     if (name.contains('export') || name.contains('shipment')) return ProductionStage.export;
+    if (name.contains('stock') || name.contains('inventory')) return ProductionStage.stock;
     if (ProductionFlowMapper.isPoSheetName(name)) return ProductionStage.po;
     return null;
   }

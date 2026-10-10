@@ -163,44 +163,46 @@ void main() {
       expect(second.cuttingQuantity, 75);
     });
 
-    test('reads a Date column into the record', () {
-      final table = SheetTable(
-        headers: const ['PO No', 'Article', 'Color', 'Qty', 'Date'],
+    test('sums a Stock stage into the stockQuantity', () {
+      final stock = SheetTable(
+        headers: const ['PO No', 'Article', 'Color', 'Stock'],
         rows: const [
-          ['PO 001', 'Boot', 'Black', '100', '24/05/2026'],
+          ['PO 001', 'Boot', 'Black', '40'],
+          ['PO 001', 'Boot', 'Black', '5'],
         ],
         metadata: SheetSourceMetadata(
           spreadsheetId: 'sheet-a',
-          sheetName: 'po',
+          sheetName: 'stock',
           requestedRange: null,
           sourceUrl: 'url',
           loadedAt: _loadedAt,
         ),
       );
 
-      final records = ProductionFlowMapper().map({ProductionStage.po: table});
+      final records = ProductionFlowMapper().map({ProductionStage.stock: stock});
 
-      expect(records.single.date, '24/05/2026');
+      expect(records, hasLength(1));
+      expect(records.single.stockQuantity, 45);
     });
 
-    test('keeps date null when no readable date column exists', () {
-      final table = SheetTable(
-        headers: const ['PO No', 'Article', 'Color', 'Qty'],
+    test('matches stock quantity headers like Stock Qty and Available', () {
+      final stock = SheetTable(
+        headers: const ['PO No', 'Article', 'Color', 'Available'],
         rows: const [
-          ['PO 001', 'Boot', 'Black', '100'],
+          ['PO 001', 'Boot', 'Black', '7'],
         ],
         metadata: SheetSourceMetadata(
           spreadsheetId: 'sheet-a',
-          sheetName: 'po',
+          sheetName: 'inventory',
           requestedRange: null,
           sourceUrl: 'url',
           loadedAt: _loadedAt,
         ),
       );
 
-      final records = ProductionFlowMapper().map({ProductionStage.po: table});
+      final records = ProductionFlowMapper().map({ProductionStage.stock: stock});
 
-      expect(records.single.date, isNull);
+      expect(records.single.stockQuantity, 7);
     });
   });
 }
