@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
 import 'package:bizbrain/features/organizations/presentation/providers/organization_providers.dart';
+import 'package:bizbrain/features/time_lapse/application/playback_controller.dart';
+import 'package:bizbrain/features/time_lapse/domain/tl_frame_factory.dart';
 import 'package:bizbrain/features/time_lapse/presentation/widgets/multi_stage_line_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,9 +23,23 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
   String _range = '30 days';
   String _group = 'Day';
   bool _showMovingAverage = false;
+  late final PlaybackController _playback;
+  String _lastFrameKey = '';
 
-  static const _dateAliases = ['date','timestamp','createdat','updatedat','cuttingdate','sewingdate','lastingdate','productiondate','issuedate','shipmentdate','exportdate','entrydate'];
-  static const _qtyAliases = ['quantity','qty','cuttingquantity','sewingquantity','lastingquantity','productionquantity','issuequantity','shipmentquantity','exportquantity','fgquantity','poquantity','totalquantity'];
+  static const _dateAliases = ['date','timestamp','createdat','updatedat','cuttingdate','sewingdate','lastingdate','productiondate','issuedate','shipmentdate','exportdate','entrydate','entered date','entry date','created date','order date','delivery date','expected date','ship date','completion date'];
+  static const _qtyAliases = ['quantity','qty','cuttingquantity','sewingquantity','lastingquantity','productionquantity','issuequantity','shipmentquantity','exportquantity','fgquantity','poquantity','totalquantity','v.no','vno','v no','types','nos','no','number','count','total','pcs','pieces','units','produced','output','balance','stock','inventory','available'];
+
+  @override
+  void initState() {
+    super.initState();
+    _playback = PlaybackController();
+  }
+
+  @override
+  void dispose() {
+    _playback.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +75,7 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
     final raw=<_Point>[];
     for(final s in selected) {
       final df=_dateField!='Auto detect'&&s.columns.contains(_dateField)?_dateField:_best(s.columns,_dateAliases);
-      final qf=_qtyField!='Auto detect'&&s.columns.contains(_qtyField)?_qtyField:_best(s.columns,_qtyAliases);
+      final qf=_qtyField!='Auto detect'&&s.columns.contains(_qtyField)?_qtyField:_best(s.columns,_qtyAliases,rows:s.rows);
       if(df==null||qf==null) continue;
       for(final row in s.rows) {
         final date=_parseDate(row[df]); final qty=_parseQty(row[qf]);
@@ -74,6 +90,16 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
       grouped[d]=(grouped[d]??0)+p.qty;
     }
     final graph=grouped.entries.toList()..sort((a,b)=>a.key.compareTo(b.key));
+    debugPrint('[TimeLapse] Date field: $_dateField');
+    debugPrint('[TimeLapse] Qty field: $_qtyField');
+    debugPrint('[TimeLapse] Raw points: ${raw.length}');
+    debugPrint('[TimeLapse] Filtered: ${filtered.length}');
+    debugPrint('[TimeLapse] Grouped: ${graph.length}');
+    final frameKey = graph.map((e) => '${e.key}:${e.value}').join('|');
+    if (frameKey != _lastFrameKey) {
+      _lastFrameKey = frameKey;
+      _playback.load(const TLFrameFactory().build(graph, cumulative: true));
+    }
     final trendValues = graph.map((e) => e.value).toList();
     final trendMean = trendValues.isEmpty ? 0.0 : trendValues.reduce((a, b) => a + b) / trendValues.length;
     final variance = trendValues.isEmpty ? 0.0 : trendValues.map((v) => pow(v - trendMean, 2).toDouble()).reduce((a, b) => a + b) / trendValues.length;
@@ -153,41 +179,52 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
         const SizedBox(height:14),
         if(sources.isEmpty)_empty(context,'No production sheets found','Open Data Sources and load the Cutting and Sewing Google Sheets first.',
           onAction:(){})
-        else Card(
-          elevation:0,
-          shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20),side:BorderSide(color:c.outlineVariant)),
-          child:graph.isEmpty
-            ?_empty(context,'No matching date and quantity rows','Check the selected headers or choose All dates. Only real numeric quantities with readable dates are plotted.',
-                onAction:(){})
-            :LayoutBuilder(builder:(context,box){
-              final height = min(500.0, max(400.0, box.maxWidth*0.45));
-              return Stack(children:[
-                Padding(padding:const EdgeInsets.fromLTRB(16,40,16,8),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                  MultiStageLineChart(
-                    series: _buildStageSeries(filtered),
-                    showMovingAverage: _showMovingAverage,
-                    movingAverageSeries: _showMovingAverage
-                        ? _computeMovingAverage(filtered, 7)
-                        : null,
-                    height: height,
-                  ),
-                  const SizedBox(height:8),Text('X-axis: $_group · Y-axis: summed quantity · Pinch to zoom',style:theme.textTheme.bodySmall?.copyWith(color:c.onSurfaceVariant)),
-                  const SizedBox(height:4),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    title: const Text('Show 7-day moving average'),
-                    value: _showMovingAverage,
-                    onChanged: (v) => setState(() => _showMovingAverage = v),
-                  ),
-                ])),
-                Positioned(top:4,right:4,child:IconButton(
-                  tooltip:'Fullscreen',
-                  onPressed:()=>_openFullscreen(filtered),
-                  icon:const Icon(Icons.fullscreen_rounded),
-                )),
-              ]);
-            }),
+        else AnimatedBuilder(
+          animation: _playback,
+          builder: (context, _) => Card(
+            elevation:0,
+            shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20),side:BorderSide(color:c.outlineVariant)),
+            child:graph.isEmpty
+              ?_empty(context,'No matching date and quantity rows','Check the selected headers or choose All dates. Only real numeric quantities with readable dates are plotted.',
+                  onAction:(){})
+              :LayoutBuilder(builder:(context,box){
+                final height = min(500.0, max(400.0, box.maxWidth*0.45));
+                final current = _playback.current;
+                final activeFiltered = current == null
+                    ? filtered
+                    : filtered
+                          .where((p) => !p.date.isAfter(current.date))
+                          .toList();
+                return Stack(children:[
+                  Padding(padding:const EdgeInsets.fromLTRB(16,40,16,8),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                    _playbackBar(context),
+                    const SizedBox(height:8),
+                    MultiStageLineChart(
+                      series: _buildStageSeries(activeFiltered),
+                      showMovingAverage: _showMovingAverage,
+                      movingAverageSeries: _showMovingAverage
+                          ? _computeMovingAverage(activeFiltered, 7)
+                          : null,
+                      height: height,
+                    ),
+                    const SizedBox(height:8),Text('X-axis: $_group · Y-axis: summed quantity · Pinch to zoom',style:theme.textTheme.bodySmall?.copyWith(color:c.onSurfaceVariant)),
+                    const SizedBox(height:4),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: const Text('Show 7-day moving average'),
+                      value: _showMovingAverage,
+                      onChanged: (v) => setState(() => _showMovingAverage = v),
+                    ),
+                  ])),
+                  Positioned(top:4,right:4,child:IconButton(
+                    tooltip:'Fullscreen',
+                    onPressed:()=>_openFullscreen(activeFiltered),
+                    icon:const Icon(Icons.fullscreen_rounded),
+                  )),
+                ]);
+              }),
+          ),
         ),
       ],
     );
@@ -262,6 +299,85 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
   }
 
   // ── Building blocks ─────────────────────────────────────────────────────
+
+  Widget _playbackBar(BuildContext context) {
+    final theme = Theme.of(context);
+    final current = _playback.current;
+    return AnimatedBuilder(
+      animation: _playback,
+      builder: (context, _) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(
+              alpha: .35,
+            ),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              IconButton(
+                tooltip: _playback.isPlaying ? 'Pause' : 'Play',
+                onPressed: _playback.isEnabled
+                    ? () => setState(() => _playback.toggle())
+                    : null,
+                icon: Icon(
+                  _playback.isPlaying
+                      ? Icons.pause_circle_filled_rounded
+                      : Icons.play_circle_filled_rounded,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          current == null
+                              ? 'No timeline'
+                              : _date(current.date),
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          _playback.length < 2
+                              ? '·'
+                              : '${_playback.index + 1}/${_playback.length}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: _playback.progress,
+                        minHeight: 5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Restart',
+                onPressed: _playback.isEnabled
+                    ? () => setState(() => _playback.restart())
+                    : null,
+                icon: const Icon(Icons.replay_rounded),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   Widget _hero(BuildContext context) {
     final theme=Theme.of(context); final c=theme.colorScheme;
@@ -529,9 +645,18 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
   static bool _isDateField(String s){final n=_norm(s);return n.contains('date')||n.contains('timestamp')||n=='createdat'||n=='updatedat'||n.endsWith('time');}
   static bool _isQtyField(String s){final n=_norm(s);return n=='qty'||n.contains('quantity')||n.endsWith('qty')||n=='units';}
   static String _norm(String s)=>s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'),'');
-  static String? _best(List<String> cols,List<String> aliases){
+  static String? _best(List<String> cols,List<String> aliases,{List<Map<String,String>>? rows}){
     for(final a in aliases){for(final c in cols){if(_norm(a)==_norm(c))return c;}}
     for(final c in cols){if(aliases==_dateAliases&&_isDateField(c))return c;if(aliases==_qtyAliases&&_isQtyField(c))return c;}
+    // Fallback: for quantity, pick the first column where >50% of values parse as numbers.
+    if(aliases==_qtyAliases&&rows!=null&&rows.isNotEmpty){
+      for(final c in cols){
+        if(rows.isEmpty)return null;
+        var numeric=0;
+        for(final row in rows){if(_parseQty(row[c])!=null)numeric++;}
+        if(numeric*2>rows.length)return c;
+      }
+    }
     return null;
   }
   static DateTime? _parseDate(String? value) {
