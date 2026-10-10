@@ -139,9 +139,12 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
             ?_empty(context,'No matching date and quantity rows','Check the selected headers or choose All dates. Only real numeric quantities with readable dates are plotted.')
             :Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
               MultiStageLineChart(
-                stageData: _chartStageData(filtered),
-                stageColors: _stageColors(labels),
+                series: _buildStageSeries(filtered),
                 showMovingAverage: _showMovingAverage,
+                movingAverageSeries: _showMovingAverage
+                    ? _computeMovingAverage(filtered, 7)
+                    : null,
+                height: 250,
               ),
               const SizedBox(height:8),Text('X-axis: $_group · Y-axis: summed quantity',style:theme.textTheme.bodySmall?.copyWith(color:c.onSurfaceVariant)),
               const SizedBox(height:8),
@@ -209,21 +212,37 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
     });
   }
 
-  /// Chart data, optionally appending a 7-point moving average per stage.
-  Map<String, List<TrendPoint>> _chartStageData(List<_Point> filtered) {
-    final data = _groupByStage(filtered);
-    if (!_showMovingAverage) return data;
-    final averaged = <String, List<TrendPoint>>{};
-    data.forEach((stage, pts) {
-      final avg = _movingAverage(pts, 7);
-      if (avg.isNotEmpty) averaged['$stage (7d avg)'] = avg;
-    });
-    return {...data, ...averaged};
+  /// Chart data as one [StageSeries] per stage, colours from the deterministic
+  /// palette ordered by the first appearance of each stage.
+  List<StageSeries> _buildStageSeries(List<_Point> filtered) {
+    final grouped = _groupByStage(filtered);
+    final labels = grouped.keys.toList();
+    return [
+      for (var i = 0; i < labels.length; i++)
+        StageSeries(
+          stageName: labels[i],
+          color: MultiStageLineChart.colorFor(i),
+          points: grouped[labels[i]]!,
+        ),
+    ];
   }
 
-  /// Distinct palette colour for each stage label.
-  List<Color> _stageColors(List<String> labels) =>
-      MultiStageLineChart.colorsFor(labels.length);
+  /// Single overall 7-day moving average across all selected stages,
+  /// aggregated per bucket so the overlay is one dashed line.
+  List<TrendPoint> _computeMovingAverage(List<_Point> points, int window) {
+    if (points.isEmpty) return const <TrendPoint>[];
+    final byDate = <DateTime, double>{};
+    for (final p in points) {
+      final d = _bucket(p.date);
+      byDate[d] = (byDate[d] ?? 0) + p.qty;
+    }
+    final entries = byDate.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final trend = [
+      for (final e in entries) TrendPoint(date: e.key, value: e.value),
+    ];
+    return _movingAverage(trend, window);
+  }
 
   /// Simple trailing moving average over [window] points.
   List<TrendPoint> _movingAverage(List<TrendPoint> points, int window) {
