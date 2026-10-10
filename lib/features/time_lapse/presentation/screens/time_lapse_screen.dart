@@ -5,6 +5,7 @@ import 'package:bizbrain/features/data_sources/presentation/providers/google_she
 import 'package:bizbrain/features/organizations/presentation/providers/organization_providers.dart';
 import 'package:bizbrain/features/time_lapse/presentation/widgets/multi_stage_line_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class TimeLapseScreen extends ConsumerStatefulWidget {
@@ -36,7 +37,7 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
         actions: [IconButton(tooltip:'Reload sources',onPressed:((){final orgId=ref.read(effectiveOrganizationProvider)?.id??'';ref.invalidate(sourcesListProvider(orgId));}),icon:const Icon(Icons.refresh_rounded))],
       ),
       body: ref.watch(sourcesListProvider(ref.watch(effectiveOrganizationProvider)?.id ?? '')).when(
-        loading:()=>const Center(child:CircularProgressIndicator()),
+        loading:()=>const _SkeletonLoader(),
         error:(e,_)=>Center(child:Padding(padding:const EdgeInsets.all(24),child:Text('Could not load Google Sheets cache: $e'))),
         data:(all)=>_report(context,all),
       ),
@@ -73,123 +74,369 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
       grouped[d]=(grouped[d]??0)+p.qty;
     }
     final graph=grouped.entries.toList()..sort((a,b)=>a.key.compareTo(b.key));
-    final total=filtered.fold<double>(0,(sum,p)=>sum+p.qty);
-    final average = filtered.isEmpty ? 0.0 : total / filtered.length;
-    final peak = filtered.isEmpty ? 0.0 : filtered.map((p) => p.qty).reduce((a, b) => a > b ? a : b);
-    final lowest = filtered.isEmpty ? 0.0 : filtered.map((p) => p.qty).reduce((a, b) => a < b ? a : b);
     final trendValues = graph.map((e) => e.value).toList();
     final trendMean = trendValues.isEmpty ? 0.0 : trendValues.reduce((a, b) => a + b) / trendValues.length;
     final variance = trendValues.isEmpty ? 0.0 : trendValues.map((v) => pow(v - trendMean, 2).toDouble()).reduce((a, b) => a + b) / trendValues.length;
     final anomalyThreshold = sqrt(variance) * 2;
     final anomalies = graph.where((e) => anomalyThreshold > 0 && (e.value - trendMean).abs() > anomalyThreshold).toList();
-    return Container(
-      decoration:BoxDecoration(gradient:LinearGradient(begin:Alignment.topCenter,end:Alignment.bottomCenter,colors:[c.primary.withValues(alpha:.035),c.surface])),
-      child:ListView(padding:const EdgeInsets.all(20),children:[
-        Container(padding:const EdgeInsets.all(24),decoration:BoxDecoration(gradient:LinearGradient(colors:[c.primary,c.tertiary],begin:Alignment.topLeft,end:Alignment.bottomRight),borderRadius:BorderRadius.circular(24)),
-          child:Row(children:[Icon(Icons.timeline_rounded,size:38,color:c.onPrimary),const SizedBox(width:16),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            Text('Production Time Lapse',style:theme.textTheme.headlineSmall?.copyWith(color:c.onPrimary,fontWeight:FontWeight.w800)),
-            const SizedBox(height:6),Text('Explore quantity trends from cached Google Sheets.',style:theme.textTheme.bodyMedium?.copyWith(color:c.onPrimary.withValues(alpha:.9)))
-          ]))])),
-        const SizedBox(height:18),_title(context,'Customize report',Icons.tune_rounded),const SizedBox(height:12),
-        Card(elevation:0,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20),side:BorderSide(color:c.outlineVariant)),child:Padding(padding:const EdgeInsets.all(16),child:LayoutBuilder(builder:(context,box){
-          final w=box.maxWidth>=760?(box.maxWidth-24)/3:box.maxWidth>=480?(box.maxWidth-12)/2:box.maxWidth;
-          return Wrap(spacing:12,runSpacing:12,children:[
-            SizedBox(width:w,child:_drop(context,'Date field',_dateField,['Auto detect',...dates],(v)=>setState(()=>_dateField=v))),
-            SizedBox(width:w,child:_drop(context,'Quantity field',_qtyField,['Auto detect',...quantities],(v)=>setState(()=>_qtyField=v))),
-            SizedBox(width:w,child:_drop(context,'Date range',_range,const ['7 days','30 days','90 days','All dates'],(v)=>setState(()=>_range=v))),
-            SizedBox(width:w,child:_drop(context,'Group trend by',_group,const ['Day','Week','Month'],(v)=>setState(()=>_group=v))),
+    return DefaultTabController(
+      length: 4,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: const Text('Time Lapse'),
+          leading: Container(margin: const EdgeInsets.all(9),
+            decoration: BoxDecoration(gradient: LinearGradient(colors: [c.primary,c.tertiary]), borderRadius: BorderRadius.circular(12)),
+            child: Icon(Icons.timelapse_rounded,color:c.onPrimary)),
+          actions: [
+            IconButton(tooltip:'Reload sources',onPressed:((){final orgId=ref.read(effectiveOrganizationProvider)?.id??'';ref.invalidate(sourcesListProvider(orgId));}),icon:const Icon(Icons.refresh_rounded)),
+            IconButton(tooltip:'Chart options',onPressed:_openChartOptions,icon:const Icon(Icons.tune_rounded)),
+            IconButton(tooltip:'Export CSV',onPressed:()=>_openExport(filtered),icon:const Icon(Icons.download_rounded)),
+          ],
+          bottom: TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            tabs: const [
+              Tab(icon: Icon(Icons.insert_chart_outlined_rounded), text: 'Trend'),
+              Tab(icon: Icon(Icons.compare_arrows_rounded), text: 'Compare'),
+              Tab(icon: Icon(Icons.view_timeline_rounded), text: 'Timeline'),
+              Tab(icon: Icon(Icons.warning_amber_rounded), text: 'Anomaly'),
+            ],
+          ),
+        ),
+        body: Container(
+          decoration:BoxDecoration(gradient:LinearGradient(begin:Alignment.topCenter,end:Alignment.bottomCenter,colors:[c.primary.withValues(alpha:.035),c.surface])),
+          child: TabBarView(children: [
+            _trendTab(context, all, labels, selected, filtered, dates, quantities, graph, sources),
+            _compareTab(context, filtered),
+            _timelineTab(context, filtered),
+            _anomalyTab(context, anomalies, trendMean),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  // ── Tabs ────────────────────────────────────────────────────────────────
+
+  Widget _trendTab(BuildContext context, List<SheetCacheModel> all, List<String> labels,
+      List<SheetCacheModel> selected, List<_Point> filtered, List<String> dates,
+      List<String> quantities, List<MapEntry<DateTime, double>> graph, List<SheetCacheModel> sources) {
+    final theme=Theme.of(context); final c=theme.colorScheme;
+    final total=filtered.fold<double>(0,(sum,p)=>sum+p.qty);
+    final average = filtered.isEmpty ? 0.0 : total / filtered.length;
+    final peak = filtered.isEmpty ? 0.0 : filtered.map((p) => p.qty).reduce((a, b) => a > b ? a : b);
+    final growth = graph.length >= 2 && graph.first.value != 0
+        ? ((graph.last.value - graph.first.value) / graph.first.value) * 100
+        : 0.0;
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _hero(context),
+        const SizedBox(height:14),
+        LayoutBuilder(builder: (context, box) {
+          final cols = box.maxWidth >= 840 ? 4 : 2;
+          final w = (box.maxWidth - (cols - 1) * 10) / cols;
+          return Wrap(spacing:10,runSpacing:10,children:[
+            SizedBox(width:w,child:_kpi(context,'Total',_fmt(total),Icons.inventory_2_outlined,c.primary,_trend(-1))),
+            SizedBox(width:w,child:_kpi(context,'Average',_fmt(average),Icons.functions_rounded,c.tertiary,_trend(0))),
+            SizedBox(width:w,child:_kpi(context,'Peak',_fmt(peak),Icons.trending_up_rounded,c.secondary,_trend(1))),
+            SizedBox(width:w,child:_kpi(context,'Growth','${growth>=0?'+':''}${_fmt(growth)}%',Icons.insights_rounded,growth>=0?Colors.green.shade700:Colors.red.shade600,_trend(growth<0?-1:growth>0?1:0))),
           ]);
-        }))),
+        }),
+        const SizedBox(height:14),
+        _compactFilters(context, dates, quantities),
         if (labels.isNotEmpty) ...[
           const SizedBox(height:12),
-          _title(context, 'Compare stages / sheets', Icons.compare_arrows_rounded),
-          const SizedBox(height:8),
-          Wrap(spacing:8, runSpacing:8, children: [
-            FilterChip(
-              label: Text(_selectedLabels.isEmpty ? 'All stages (${labels.length})' : 'All stages'),
-              selected: _selectedLabels.isEmpty,
-              onSelected: (_) => setState(() => _selectedLabels.clear()),
-            ),
-            ...labels.map((label) => FilterChip(
-              label: Text(label),
-              selected: _selectedLabels.contains(label),
-              onSelected: (checked) => setState(() {
-                if (checked) {
-                  _selectedLabels.add(label);
-                } else {
-                  _selectedLabels.remove(label);
-                }
-              }),
-            )),
-          ]),
+          _stageChips(context, labels),
         ],
-        const SizedBox(height:18),
-        if(sources.isEmpty)_empty(context,'No production sheets found','Open Data Sources and load the Cutting and Sewing Google Sheets first.')
-        else ...[
-          Wrap(spacing:12,runSpacing:12,children:[
-            _metric(context,'Total quantity',_fmt(total),Icons.inventory_2_outlined,c.primary),
-            _metric(context,'Average quantity',_fmt(average),Icons.functions_rounded,c.tertiary),
-            _metric(context,'Peak quantity',_fmt(peak),Icons.trending_up_rounded,c.secondary),
-            _metric(context,'Lowest quantity',_fmt(lowest),Icons.trending_down_rounded,c.error),
-            _metric(context,'Matching rows','${filtered.length}',Icons.table_rows_rounded,c.tertiary),
-            _metric(context,'Stages','${selected.map(_label).toSet().length}',Icons.account_tree_outlined,c.secondary),
-          ]),
-          const SizedBox(height:18),_title(context,'Quantity trend',Icons.show_chart_rounded),const SizedBox(height:12),
-          Card(elevation:0,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20),side:BorderSide(color:c.outlineVariant)),child:Padding(padding:const EdgeInsets.all(16),child:graph.isEmpty
-            ?_empty(context,'No matching date and quantity rows','Check the selected headers or choose All dates. Only real numeric quantities with readable dates are plotted.')
+        const SizedBox(height:14),
+        if(sources.isEmpty)_empty(context,'No production sheets found','Open Data Sources and load the Cutting and Sewing Google Sheets first.',
+          onAction:(){})
+        else Card(
+          elevation:0,
+          shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20),side:BorderSide(color:c.outlineVariant)),
+          child:graph.isEmpty
+            ?_empty(context,'No matching date and quantity rows','Check the selected headers or choose All dates. Only real numeric quantities with readable dates are plotted.',
+                onAction:(){})
+            :LayoutBuilder(builder:(context,box){
+              final height = min(500.0, max(400.0, box.maxWidth*0.45));
+              return Stack(children:[
+                Padding(padding:const EdgeInsets.fromLTRB(16,40,16,8),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                  MultiStageLineChart(
+                    series: _buildStageSeries(filtered),
+                    showMovingAverage: _showMovingAverage,
+                    movingAverageSeries: _showMovingAverage
+                        ? _computeMovingAverage(filtered, 7)
+                        : null,
+                    height: height,
+                  ),
+                  const SizedBox(height:8),Text('X-axis: $_group · Y-axis: summed quantity · Pinch to zoom',style:theme.textTheme.bodySmall?.copyWith(color:c.onSurfaceVariant)),
+                  const SizedBox(height:4),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: const Text('Show 7-day moving average'),
+                    value: _showMovingAverage,
+                    onChanged: (v) => setState(() => _showMovingAverage = v),
+                  ),
+                ])),
+                Positioned(top:4,right:4,child:IconButton(
+                  tooltip:'Fullscreen',
+                  onPressed:()=>_openFullscreen(filtered),
+                  icon:const Icon(Icons.fullscreen_rounded),
+                )),
+              ]);
+            }),
+        ),
+      ],
+    );
+  }
+
+  Widget _compareTab(BuildContext context, List<_Point> filtered) {
+    final theme=Theme.of(context); final c=theme.colorScheme;
+    final byStage=<String,List<double>>{};
+    for (final p in filtered) {
+      byStage.putIfAbsent(p.source,()=>[]).add(p.qty);
+    }
+    if(byStage.isEmpty) return Center(child:_empty(context,'No data to compare','Feed rows into the Time Lapse report first.',onAction:(){}));
+    final rows=byStage.entries.toList()..sort((a,b){final x=_sum(b.value);return x.compareTo(_sum(a.value));});
+    final maxRows = rows.map((e)=>e.value.length).fold<int>(0,(a,b)=>a>b?a:b);
+    return ListView(padding:const EdgeInsets.all(16),children:[
+      Card(elevation:0,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20),side:BorderSide(color:c.outlineVariant)),child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:DataTable(
+        headingRowColor:WidgetStatePropertyAll(c.primaryContainer.withValues(alpha:.7)),
+        columns:const [DataColumn(label:Text('Stage / Sheet')),DataColumn(label:Text('Rows'),numeric:true),DataColumn(label:Text('Total'),numeric:true),DataColumn(label:Text('Average'),numeric:true),DataColumn(label:Text('Peak'),numeric:true),DataColumn(label:Text('Variance'),numeric:true)],
+        rows:rows.map((e)=>DataRow(cells:[
+          DataCell(Text(e.key)),
+          DataCell(Text('${e.value.length}')),
+          DataCell(Text(_fmt(_sum(e.value)))),
+          DataCell(Text(_fmt(_sum(e.value)/max(1,e.value.length)))),
+          DataCell(Text(_fmt(e.value.reduce(max)))),
+          DataCell(Text(_fmt(_variance(e.value)))),
+        ])).toList(),
+      ))),
+      const SizedBox(height:10),
+      Row(children:[Icon(Icons.info_outline,size:16,color:c.onSurfaceVariant),const SizedBox(width:6),Text('Compared by summed quantity across $maxRows buckets.',style:theme.textTheme.bodySmall?.copyWith(color:c.onSurfaceVariant))]),
+    ]);
+  }
+
+  Widget _timelineTab(BuildContext context, List<_Point> filtered) {
+    final theme=Theme.of(context); final c=theme.colorScheme;
+    return ListView(padding:const EdgeInsets.all(16),children:[
+      if(filtered.isEmpty)_empty(context,'No timeline records','Feed rows into the Time Lapse report first.',onAction:(){})
+      else ...[
+        Card(elevation:0,clipBehavior:Clip.antiAlias,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18),side:BorderSide(color:c.outlineVariant)),child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:DataTable(
+          headingRowColor:WidgetStatePropertyAll(c.primaryContainer.withValues(alpha:.7)),
+          columns:const [DataColumn(label:Text('Date')),DataColumn(label:Text('Stage / Sheet')),DataColumn(label:Text('Quantity'),numeric:true),DataColumn(label:Text('Date field')),DataColumn(label:Text('Quantity field'))],
+          rows:filtered.reversed.take(100).map((p)=>DataRow(cells:[DataCell(Text(_date(p.date))),DataCell(Text(p.source)),DataCell(Text(_fmt(p.qty))),DataCell(Text(p.dateField)),DataCell(Text(p.qtyField))])).toList(),
+        ))),
+        if(filtered.length>100)Padding(padding:const EdgeInsets.all(8),child:Text('Showing latest 100 of ${filtered.length} rows.',style:theme.textTheme.bodySmall)),
+      ],
+    ]);
+  }
+
+  Widget _anomalyTab(BuildContext context, List<MapEntry<DateTime,double>> anomalies, double trendMean) {
+    final theme=Theme.of(context); final c=theme.colorScheme;
+    return ListView(padding:const EdgeInsets.all(16),children:[
+      Card(
+        elevation:0,
+        shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20),side:BorderSide(color:c.outlineVariant)),
+        child:Padding(
+          padding:const EdgeInsets.all(16),
+          child:anomalies.isEmpty
+            ?_empty(context,'No clear anomalies detected','Trend points are checked against the mean using a 2-standard-deviation threshold.',onAction:(){})
             :Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-              MultiStageLineChart(
-                series: _buildStageSeries(filtered),
-                showMovingAverage: _showMovingAverage,
-                movingAverageSeries: _showMovingAverage
-                    ? _computeMovingAverage(filtered, 7)
-                    : null,
-                height: 250,
-              ),
-              const SizedBox(height:8),Text('X-axis: $_group · Y-axis: summed quantity',style:theme.textTheme.bodySmall?.copyWith(color:c.onSurfaceVariant)),
+              Text('${anomalies.length} unusual trend point(s) detected',style:theme.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w800)),
               const SizedBox(height:8),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: const Text('Show 7-day moving average'),
-                value: _showMovingAverage,
-                onChanged: (v) => setState(() => _showMovingAverage = v),
-              ),
-            ]))),
-          const SizedBox(height:18),
-          _title(context,'Anomaly detection',Icons.warning_amber_rounded),
-          const SizedBox(height:12),
-          Card(
-            elevation:0,
-            shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20),side:BorderSide(color:c.outlineVariant)),
-            child:Padding(
-              padding:const EdgeInsets.all(16),
-              child:anomalies.isEmpty
-                ?_empty(context,'No clear anomalies detected','Trend points are checked against the mean using a 2-standard-deviation threshold.')
-                :Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                  Text('${anomalies.length} unusual trend point(s) detected',style:theme.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w800)),
-                  const SizedBox(height:8),
-                  ...anomalies.map((point)=>ListTile(
-                    dense:true,
-                    leading:Icon(Icons.warning_amber_rounded,color:c.error),
-                    title:Text(_date(point.key)),
-                    subtitle:Text('Average: ${_fmt(trendMean)} · Difference: ${_fmt(point.value-trendMean)}'),
-                    trailing:Text(_fmt(point.value),style:theme.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w800)),
-                  )),
-                ]),
-            ),
-          ),
-          const SizedBox(height:18),_title(context,'Timeline records',Icons.view_timeline_rounded),const SizedBox(height:12),
-          if(filtered.isNotEmpty)Card(elevation:0,clipBehavior:Clip.antiAlias,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18),side:BorderSide(color:c.outlineVariant)),child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:DataTable(
-            headingRowColor:WidgetStatePropertyAll(c.primaryContainer.withValues(alpha:.7)),
-            columns:const [DataColumn(label:Text('Date')),DataColumn(label:Text('Stage / Sheet')),DataColumn(label:Text('Quantity'),numeric:true),DataColumn(label:Text('Date field')),DataColumn(label:Text('Quantity field'))],
-            rows:filtered.reversed.take(100).map((p)=>DataRow(cells:[DataCell(Text(_date(p.date))),DataCell(Text(p.source)),DataCell(Text(_fmt(p.qty))),DataCell(Text(p.dateField)),DataCell(Text(p.qtyField))])).toList(),
-          ))),
-          if(filtered.length>100)Padding(padding:const EdgeInsets.all(8),child:Text('Showing latest 100 of ${filtered.length} rows.',style:theme.textTheme.bodySmall))
-        ]
+              ...anomalies.map((point)=>ListTile(
+                dense:true,
+                leading:Icon(Icons.warning_amber_rounded,color:c.error),
+                title:Text(_date(point.key)),
+                subtitle:Text('Average: ${_fmt(trendMean)} · Difference: ${_fmt(point.value-trendMean)}'),
+                trailing:Text(_fmt(point.value),style:theme.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w800)),
+              )),
+            ]),
+        ),
+      ),
+    ]);
+  }
+
+  // ── Building blocks ─────────────────────────────────────────────────────
+
+  Widget _hero(BuildContext context) {
+    final theme=Theme.of(context); final c=theme.colorScheme;
+    return Container(
+      padding:const EdgeInsets.all(20),
+      decoration:BoxDecoration(gradient:LinearGradient(colors:[c.primary,c.tertiary],begin:Alignment.topLeft,end:Alignment.bottomRight),borderRadius:BorderRadius.circular(24)),
+      child:Row(children:[
+        Container(padding:const EdgeInsets.all(12),decoration:BoxDecoration(color:Colors.white.withValues(alpha:.15),borderRadius:BorderRadius.circular(16)),child:Icon(Icons.timeline_rounded,size:28,color:c.onPrimary)),
+        const SizedBox(width:16),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Text('Production Time Lapse',style:theme.textTheme.headlineSmall?.copyWith(color:c.onPrimary,fontWeight:FontWeight.w800)),
+          const SizedBox(height:4),Text('Explore quantity trends from cached Google Sheets.',style:theme.textTheme.bodyMedium?.copyWith(color:c.onPrimary.withValues(alpha:.9)))
+        ])),
       ]),
     );
   }
+
+  Widget _compactFilters(BuildContext context, List<String> dates, List<String> quantities) {
+    final c=Theme.of(context).colorScheme;
+    return Card(
+      elevation:0,
+      shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18),side:BorderSide(color:c.outlineVariant)),
+      child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:10),child:LayoutBuilder(builder:(context,box){
+        final wide=box.maxWidth>=980;
+        final filters=[
+          _drop(context,'Date field',_dateField,['Auto detect',...dates],Icons.event_rounded,(v)=>setState(()=>_dateField=v)),
+          _drop(context,'Qty field',_qtyField,['Auto detect',...quantities],Icons.numbers_rounded,(v)=>setState(()=>_qtyField=v)),
+          _drop(context,'Date range',_range,const ['7 days','30 days','90 days','All dates'],Icons.date_range_rounded,(v)=>setState(()=>_range=v)),
+          _drop(context,'Group by',_group,const ['Day','Week','Month'],Icons.view_agenda_rounded,(v)=>setState(()=>_group=v)),
+        ];
+        if(wide) return Row(children:[for(final f in filters) Expanded(child:Builder(builder:(context)=>f))]);
+        return Wrap(spacing:8,runSpacing:8,children:[
+          for(final f in filters) SizedBox(width:(box.maxWidth-40)/2,child:f),
+        ]);
+      })),
+    );
+  }
+
+  Widget _stageChips(BuildContext context, List<String> labels) {
+    final c=Theme.of(context).colorScheme;
+    return SizedBox(
+      height:48,
+      child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
+        _chip(
+          label:_selectedLabels.isEmpty?'All stages (${labels.length})':'All stages',
+          color:c.primary,selected:_selectedLabels.isEmpty,
+          onTap:()=>setState(()=>_selectedLabels.clear()),
+        ),
+        const SizedBox(width:8),
+        for(var i=0;i<labels.length;i++)...[ 
+          _chip(
+            label:labels[i],
+            color:MultiStageLineChart.colorFor(i),
+            selected:_selectedLabels.contains(labels[i]),
+            onTap:()=>setState((){
+              if(_selectedLabels.contains(labels[i])){_selectedLabels.remove(labels[i]);}
+              else{_selectedLabels.add(labels[i]);}
+            }),
+          ),
+          const SizedBox(width:8),
+        ],
+      ])),
+    );
+  }
+
+  Widget _chip({required String label,required Color color,required bool selected,required VoidCallback onTap}) {
+    final c=Theme.of(context).colorScheme;
+    return FilterChip(
+      selected:selected,
+      avatar:selected?null:Container(width:10,height:10,decoration:BoxDecoration(color:color,shape:BoxShape.circle)),
+      showCheckmark:true,
+      label:Text(label),
+      selectedColor:color.withValues(alpha:.18),
+      checkmarkColor:color,
+      side:BorderSide(color:selected?color:c.outlineVariant),
+      onSelected:(_)=>onTap(),
+      backgroundColor:c.surfaceContainerHighest.withValues(alpha:.3),
+    );
+  }
+
+  void _openChartOptions() {
+    showDialog<void>(context:context,builder:(dialogContext)=>StatefulBuilder(builder:(dialogContext,setDialogState)=>AlertDialog(
+      title:const Text('Chart options'),
+      content:Column(mainAxisSize:MainAxisSize.min,children:[
+        SwitchListTile(
+          contentPadding:EdgeInsets.zero,
+          title:const Text('Show 7-day moving average'),
+          value:_showMovingAverage,
+          onChanged:(v){setState(()=>_showMovingAverage=v);setDialogState((){});},
+        ),
+      ]),
+      actions:[TextButton(onPressed:()=>Navigator.pop(dialogContext),child:const Text('Done'))],
+    )));
+  }
+
+  void _openFullscreen(List<_Point> filtered) {
+    showDialog<void>(context:context,builder:(dialogContext)=>Dialog.fullscreen(
+      backgroundColor:Color.alphaBlend(Colors.black.withValues(alpha:.86),Theme.of(context).colorScheme.surface),
+      child:Stack(children:[
+        Padding(padding:const EdgeInsets.all(24),child:Center(child:MultiStageLineChart(
+          series:_buildStageSeries(filtered),
+          showMovingAverage:_showMovingAverage,
+          movingAverageSeries:_showMovingAverage?_computeMovingAverage(filtered,7):null,
+          height:MediaQuery.of(dialogContext).size.height*0.7,
+        ))),
+        Positioned(top:8,right:8,child:IconButton(onPressed:()=>Navigator.pop(dialogContext),icon:const Icon(Icons.close_rounded,color:Colors.white))),
+      ]),
+    ));
+  }
+
+  void _openExport(List<_Point> filtered) {
+    final csv=StringBuffer()..writeln('date,source,quantity,dateField,quantityField');
+    for(final p in filtered){csv.writeln('${_date(p.date)},${p.source},${_fmt(p.qty)},${p.dateField},${p.qtyField}');}
+    showModalBottomSheet<void>(context:context,builder:(sheetContext)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      const SizedBox(height:12),
+      ListTile(leading:const Icon(Icons.description_rounded),title:const Text('Export report'),subtitle:Text('${filtered.length} rows · CSV')),
+      const ListTile(
+        leading:Icon(Icons.table_chart_rounded),
+        title:Text('Copy CSV to clipboard'),
+        trailing:Icon(Icons.chevron_right_rounded),
+      ),
+      Padding(padding:const EdgeInsets.all(16),child:SizedBox(width:double.infinity,child:FilledButton.icon(
+        onPressed:(){
+          Clipboard.setData(ClipboardData(text:csv.toString()));
+          Navigator.pop(sheetContext);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('CSV copied to clipboard')));
+        },
+        icon:const Icon(Icons.copy_rounded),label:const Text('Copy CSV'),
+      ))),
+    ])));
+  }
+
+  _Trend _trend(int direction) => _Trend(direction);
+
+  Widget _kpi(BuildContext context,String label,String value,IconData icon,Color color,_Trend trend){
+    final theme=Theme.of(context);
+    return Container(
+      height:120,
+      padding:const EdgeInsets.all(16),
+      decoration:BoxDecoration(
+        gradient:LinearGradient(begin:Alignment.topLeft,end:Alignment.bottomRight,colors:[color.withValues(alpha:.16),color.withValues(alpha:.05)]),
+        borderRadius:BorderRadius.circular(20),
+        border:Border.all(color:color.withValues(alpha:.25)),
+      ),
+      child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Row(children:[
+          Container(width:30,height:30,decoration:BoxDecoration(color:color,borderRadius:BorderRadius.circular(9)),child:Icon(icon,size:17,color:Colors.white)),
+          const Spacer(),
+          _trendIcon(trend,color),
+        ]),
+        const Spacer(),
+        Text(value,style:theme.textTheme.titleLarge?.copyWith(fontWeight:FontWeight.w800,color:theme.colorScheme.onSurface)),
+        Text(label,style:theme.textTheme.bodySmall?.copyWith(color:theme.colorScheme.onSurfaceVariant)),
+      ]),
+    );
+  }
+
+  Widget _trendIcon(_Trend trend,Color color){
+    if(trend.direction==1)return Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.arrow_upward_rounded,size:15,color:Colors.green.shade700),Text('+',style:TextStyle(color:Colors.green.shade700,fontWeight:FontWeight.w800))]);
+    if(trend.direction==-1)return Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.arrow_downward_rounded,size:15,color:Colors.red.shade600),Text('−',style:TextStyle(color:Colors.red.shade600,fontWeight:FontWeight.w800))]);
+    return Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.remove_rounded,size:15,color:color),Text('—',style:TextStyle(color:color,fontWeight:FontWeight.w800))]);
+  }
+
+  Widget _empty(BuildContext context,String title,String message,{VoidCallback? onAction}){
+    final c=Theme.of(context).colorScheme;
+    return Padding(padding:const EdgeInsets.all(20),child:Column(mainAxisSize:MainAxisSize.min,children:[
+      Icon(Icons.query_stats_rounded,size:56,color:c.tertiary),
+      const SizedBox(height:12),
+      Text(title,textAlign:TextAlign.center,style:Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w800)),
+      const SizedBox(height:8),
+      Text(message,textAlign:TextAlign.center,style:Theme.of(context).textTheme.bodyMedium?.copyWith(color:c.onSurfaceVariant,height:1.4)),
+      if(onAction!=null)...[const SizedBox(height:16),OutlinedButton.icon(onPressed:onAction,icon:const Icon(Icons.table_view_rounded),label:const Text('Go to Data Sources'))],
+    ]));
+  }
+
+  // ── Data logic (unchanged) ──────────────────────────────────────────────
 
   /// Buckets a date according to the selected grouping (Day / Week / Month).
   DateTime _bucket(DateTime date) => _group=='Month'
@@ -313,87 +560,88 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
   static DateTime _week(DateTime d){final x=DateTime(d.year,d.month,d.day);return x.subtract(Duration(days:x.weekday-1));}
   static String _fmt(double n)=>n==n.roundToDouble()?n.toInt().toString():n.toStringAsFixed(2);
   static String _date(DateTime d)=>'${d.day.toString().padLeft(2,'0')}/${d.month.toString().padLeft(2,'0')}/${d.year}';
+  static double _sum(List<double> v)=>v.fold<double>(0,(a,b)=>a+b);
+  static double _variance(List<double> v){
+    if(v.length<2)return 0;final m=_sum(v)/v.length;
+    return v.map((x)=>pow(x-m,2).toDouble()).fold<double>(0,(a,b)=>a+b)/v.length;
+  }
 
-  Widget _drop(BuildContext context,String label,String value,List<String> options,ValueChanged<String> change){
+  Widget _drop(BuildContext context,String label,String value,List<String> options,IconData icon,ValueChanged<String> change){
     final c=Theme.of(context).colorScheme;final unique=options.toSet().toList();final safe=unique.contains(value)?value:unique.first;
-    return DropdownButtonFormField<String>(initialValue:safe,isExpanded:true,decoration:InputDecoration(labelText:label,filled:true,fillColor:c.surfaceContainerHighest.withValues(alpha:.35),contentPadding:const EdgeInsets.symmetric(horizontal:12,vertical:12),border:OutlineInputBorder(borderRadius:BorderRadius.circular(14))),items:unique.map((s)=>DropdownMenuItem(value:s,child:Text(s,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v){if(v!=null)change(v);});
+    return DropdownButtonFormField<String>(initialValue:safe,isExpanded:true,decoration:InputDecoration(
+      labelText:label,prefixIcon:Icon(icon,size:19,color:c.primary),
+      filled:true,fillColor:c.surfaceContainerHighest.withValues(alpha:.35),
+      contentPadding:const EdgeInsets.symmetric(horizontal:12,vertical:12),
+      border:OutlineInputBorder(borderRadius:BorderRadius.circular(14)),
+      suffixIcon:safe=='Auto detect'||safe=='30 days'||safe=='Day'
+        ?null:GestureDetector(onTap:(){change('Auto detect');},child:const Icon(Icons.close_rounded,size:16)),
+    ),items:unique.map((s)=>DropdownMenuItem(value:s,child:Text(s,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v){if(v!=null)change(v);});
   }
-  Widget _title(BuildContext context,String title,IconData icon){final c=Theme.of(context).colorScheme;return Row(children:[Container(width:4,height:26,decoration:BoxDecoration(color:c.primary,borderRadius:BorderRadius.circular(4))),const SizedBox(width:10),Icon(icon,color:c.tertiary),const SizedBox(width:8),Text(title,style:Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight:FontWeight.w800))]);}
-  Widget _metric(BuildContext context, String title, String value, IconData icon, Color color) {
-    final c = Theme.of(context).colorScheme;
-    return SizedBox(
-      width: 210,
-      child: Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: c.outlineVariant),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: .1),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: Icon(icon, color: color),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: Theme.of(context).textTheme.bodySmall),
-                    const SizedBox(height: 4),
-                    Text(
-                      value,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
-  Widget _empty(BuildContext context,String title,String message){final c=Theme.of(context).colorScheme;return Padding(padding:const EdgeInsets.all(20),child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.query_stats_rounded,size:42,color:c.tertiary),const SizedBox(height:12),Text(title,textAlign:TextAlign.center,style:Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w800)),const SizedBox(height:8),Text(message,textAlign:TextAlign.center,style:Theme.of(context).textTheme.bodyMedium?.copyWith(color:c.onSurfaceVariant))]));}
-}
 
 class _Point {
   const _Point(this.date,this.qty,this.source,this.dateField,this.qtyField);
   final DateTime date;final double qty;final String source,dateField,qtyField;
 }
 
-// Retained as a dependency-free fallback renderer; the live chart is
-// [MultiStageLineChart].
-// ignore: unused_element
-class _LinePainter extends CustomPainter {
-  const _LinePainter({required this.points,required this.line,required this.grid,required this.text});
-  final List<MapEntry<DateTime,double>> points;final Color line,grid,text;
+class _Trend {
+  const _Trend(this.direction);
+  final int direction;
+}
+
+/// Animated shimmer skeleton shown while sources are loading.
+class _SkeletonLoader extends StatefulWidget {
+  const _SkeletonLoader();
   @override
-  void paint(Canvas canvas,Size size){
-    if(points.isEmpty)return;
-    const l=48.0,r=10.0,t=12.0,b=32.0;
-    final rect=Rect.fromLTRB(l,t,size.width-r,size.height-b);if(rect.width<=0||rect.height<=0)return;
-    final max=points.map((p)=>p.value).fold<double>(0,(a,v)=>a>v?a:v);final cap=max<=0?1.0:max*1.12;
-    final tp=TextPainter(textDirection:TextDirection.ltr,maxLines:1);final style=TextStyle(color:text,fontSize:10);final gp=Paint()..color=grid..strokeWidth=1;
-    for(var i=0;i<=4;i++){final y=rect.bottom-rect.height*i/4;canvas.drawLine(Offset(rect.left,y),Offset(rect.right,y),gp);final v=cap*i/4;tp.text=TextSpan(text:v>=1000?'${(v/1000).toStringAsFixed(1)}k':v.toStringAsFixed(v<10?1:0),style:style);tp.layout();tp.paint(canvas,Offset(0,y-tp.height/2));}
-    final path=Path(),area=Path();final paint=Paint()..color=line..strokeWidth=2.8..style=PaintingStyle.stroke..strokeJoin=StrokeJoin.round..strokeCap=StrokeCap.round;
-    final fill=Paint()..color=line.withValues(alpha:.12);
-    for(var i=0;i<points.length;i++){final x=points.length==1?rect.center.dx:rect.left+rect.width*i/(points.length-1);final y=rect.bottom-points[i].value/cap*rect.height;if(i==0){path.moveTo(x,y);area.moveTo(x,rect.bottom);area.lineTo(x,y);}else{path.lineTo(x,y);area.lineTo(x,y);}}
-    area.lineTo(points.length==1?rect.center.dx:rect.right,rect.bottom);area.close();canvas.drawPath(area,fill);canvas.drawPath(path,paint);
-    final dot=Paint()..color=line;for(var i=0;i<points.length;i++){final x=points.length==1?rect.center.dx:rect.left+rect.width*i/(points.length-1);final y=rect.bottom-points[i].value/cap*rect.height;canvas.drawCircle(Offset(x,y),3.5,dot);}
-    final ids=points.length<=5?List<int>.generate(points.length,(i)=>i):<int>[0,points.length~/2,points.length-1];
-    for(final i in ids){final d=points[i].key;tp.text=TextSpan(text:'${d.day.toString().padLeft(2,'0')}/${d.month.toString().padLeft(2,'0')}',style:style);tp.layout();final x=points.length==1?rect.center.dx-tp.width/2:(rect.left+rect.width*i/(points.length-1)-tp.width/2).clamp(rect.left,rect.right-tp.width);tp.paint(canvas,Offset(x.toDouble(),rect.bottom+8));}
+  State<_SkeletonLoader> createState() => _SkeletonLoaderState();
+}
+
+class _SkeletonLoaderState extends State<_SkeletonLoader>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat(reverse: true);
+
+  late final Animation<double> _opacity =
+      Tween<double>(begin: .35, end: .9).animate(
+        CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+      );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
+
   @override
-  bool shouldRepaint(covariant _LinePainter old)=>old.points!=points||old.line!=line||old.grid!=grid||old.text!=text;
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    return FadeTransition(
+      opacity: _opacity,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _box(c, height: 88, radius: 24),
+          const SizedBox(height: 16),
+          Row(children:[for(var i=0;i<4;i++)...[_box(c,height:120,radius:20,expand:true),if(i<3)const SizedBox(width:8)]]),
+          const SizedBox(height: 16),
+          _box(c, height: 48, radius: 18),
+          const SizedBox(height: 16),
+          _box(c, height: 420, radius: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _box(ColorScheme c,{required double height,required double radius,bool expand=false}){
+    return Container(
+      height:height,
+      width:expand?null:double.infinity,
+      decoration:BoxDecoration(
+        color:c.surfaceContainerHighest.withValues(alpha:.6),
+        borderRadius:BorderRadius.circular(radius),
+      ),
+    );
+  }
 }
