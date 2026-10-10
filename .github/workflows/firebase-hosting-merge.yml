@@ -25,7 +25,22 @@ jobs:
           echo "${GITHUB_SHA}" > web/version.txt
           sed -i "s/__BIZBRAIN_BUILD_VERSION__/${GITHUB_SHA}/g" web/index.html
       - name: Build Flutter Web release
-        run: flutter build web --release --pwa-strategy=none
+        run: |
+          flutter build web --release --pwa-strategy=none \
+            --dart-define=APP_ENV=production \
+            --dart-define=APP_BUILD=release \
+            --dart-define=FIREBASE_API_KEY=AIzaSyDSe6HNPLCoG4CoHhU4RiUjjwWUHZKB44o \
+            --dart-define=FIREBASE_AUTH_DOMAIN=bizbrain-e3a61.firebaseapp.com \
+            --dart-define=FIREBASE_PROJECT_ID=bizbrain-e3a61 \
+            --dart-define=FIREBASE_STORAGE_BUCKET=bizbrain-e3a61.firebasestorage.app \
+            --dart-define=FIREBASE_MESSAGING_SENDER_ID=862761802417 \
+            --dart-define=FIREBASE_APP_ID=1:862761802417:web:b3e2e9732cf45afd666090
+      - name: Verify Firebase config is embedded
+        run: |
+          if ! grep -q "AIzaSyDSe" build/web/main.dart.js; then
+            echo "::error::Firebase config missing from bundle - aborting deploy"
+            exit 1
+          fi
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
