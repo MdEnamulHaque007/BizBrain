@@ -22,7 +22,10 @@
 //   membership `get()` from recursing (a `get()` evaluates the target's own
 //   rules).
 // * No client write is accepted from any path; tenant data is written by the
-//   trusted backend only.
+//   trusted backend only. The single documented exception is the user-owned
+//   `dataSources` block below: a connected data source is the signed-in
+//   user's own workspace data, and rules prove ownership from the path
+//   variable and the document's own `uid` field.
 // * Unmatched paths (factories, departments, dataSources, businessRules,
 //   insights, agentMemory, activityLogs, ...) fall through to the default
 //   deny at the bottom.
@@ -93,6 +96,20 @@ service cloud.firestore {
         && resource.data.status == 'active';
 
       allow write: if false;
+    }
+
+    // Connected Google Sheets sources (user-owned workspace data).
+    //
+    // These are the app's personal data-source registry: the owner writes and
+    // reads only their own documents under `users/{uid}/dataSources`. Ownership
+    // is proven from the path variable `userId` AND the document's own `uid`
+    // field, so a successful `set` can never write under another user's
+    // subtree while claiming its own `uid`.
+    match /users/{userId}/dataSources/{sourceId} {
+      allow read, delete: if isSignedIn() && request.auth.uid == userId;
+      allow create, update: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == request.auth.uid;
     }
 
     // Default deny for every other path in the database.

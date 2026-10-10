@@ -6,6 +6,7 @@ import 'package:bizbrain/core/utils/responsive.dart';
 import 'package:bizbrain/features/authentication/domain/entities/app_user.dart';
 import 'package:bizbrain/features/authentication/presentation/providers/auth_providers.dart';
 import 'package:bizbrain/features/authentication/presentation/providers/auth_state.dart';
+import 'package:bizbrain/features/data_sources/presentation/providers/data_source_sync_providers.dart';
 import 'package:bizbrain/features/organizations/presentation/providers/organization_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -53,6 +54,8 @@ class _AppShellState extends ConsumerState<AppShell> {
     // Keeps the effective-organization persistence listener alive for the
     // whole session.
     ref.watch(organizationPersistenceProvider);
+    // Restores the signed-in user's data sources from the cloud after login.
+    ref.watch(dataSourceSyncBootstrapProvider);
     final user = ref.watch(
       authControllerProvider.select((state) => state.user),
     );

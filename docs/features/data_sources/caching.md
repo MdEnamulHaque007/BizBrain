@@ -54,6 +54,36 @@ reads persisted rows when the data-source screen opens; the newest saved sheet
 is displayed automatically. Selecting another cached source displays it
 without a network request.
 
+## Cloud sync (Firestore)
+
+Connected data sources also persist to Firestore so they survive sign-out and
+are restored on the next login with the same account.
+
+- **Document path:** `users/{uid}/dataSources/{sourceId}` where `sourceId` is
+  the same deterministic `spreadsheetId|sheetName|range|headerRow` id used
+  locally. Ownership is proven by the path variable and the document's own
+  `uid` field (see `firestore.rules`).
+- **Document contents:** the `SheetCacheModel` JSON plus `uid` and
+  `updatedAt`. Rows are capped by `capRowsForRemote` to 500 rows and 400 KiB
+  of JSON so a document stays well below the 1 MiB Firestore limit; `rowCount`
+  keeps the full fetched count, so truncation is visible as
+  `rows.length < rowCount`.
+- **When data is written:** after **Connect**, after **Refresh**, and after
+  the inline refresh in the cache actions. Deletion removes the remote
+  document too. Writes are fire-and-forget (`DataSourceSyncService` logs and
+  swallows failures so the local, offline-first experience never blocks).
+- **When data is restored:** automatically once per `(uid, organization)` pair
+  on login/app start (the app shell watches
+  `dataSourceSyncBootstrapProvider`), and manually via the **Sync cloud**
+  button in the cache actions.
+- **Merge rule:** last-write-wins by `fetchedAt`. A local cache entry wins
+  when it is at least as fresh; otherwise the remote copy is restored and
+  re-stamped with the current effective organization so it appears in the
+  active tenant immediately.
+- **Guard rails:** guest mode and builds without Firebase configuration use
+  `NoopDataSourceRemoteStorage` — cloud sync is a no-op there and behaviour is
+  identical to the local-only past.
+
 ## Troubleshooting
 
 - Check debug logs for Hive initialization or persistence errors if a cache

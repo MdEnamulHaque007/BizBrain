@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:bizbrain/core/logging/app_logger.dart';
+import 'package:bizbrain/features/authentication/presentation/providers/auth_providers.dart';
 import 'package:bizbrain/features/data_sources/data/google_sheets/google_sheets_loader.dart';
 import 'package:bizbrain/features/data_sources/data/google_sheets/sheet_table.dart';
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
 import 'package:bizbrain/features/data_sources/domain/entities/google_sheets_data_source.dart';
+import 'package:bizbrain/features/data_sources/presentation/providers/data_source_sync_providers.dart';
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
 import 'package:bizbrain/features/organizations/presentation/providers/organization_providers.dart';
 import 'package:flutter/material.dart';
@@ -129,6 +133,11 @@ class _GoogleSheetsPreviewPanelState
         _error = null;
       });
       ref.invalidate(sourcesListProvider(organizationId));
+      final uid = _signedInUid;
+      if (uid != null) {
+        // Fire and forget: the cloud must never block the preview.
+        unawaited(ref.read(dataSourceSyncProvider).push(loaded, uid: uid));
+      }
     } on GoogleSheetsInputException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -158,6 +167,9 @@ class _GoogleSheetsPreviewPanelState
       }
     }
   }
+
+  /// Id of the signed-in user, or null for guest/unauthenticated sessions.
+  String? get _signedInUid => ref.read(authControllerProvider).user?.uid;
 
   Future<void> _restoreLatestCachedSource() async {
     try {
@@ -283,6 +295,10 @@ class _GoogleSheetsPreviewPanelState
       if (!mounted) return;
       _displayCachedSource(refreshed);
       ref.invalidate(sourcesListProvider(cache.organizationId));
+      final uid = _signedInUid;
+      if (uid != null) {
+        unawaited(ref.read(dataSourceSyncProvider).push(refreshed, uid: uid));
+      }
     } catch (error, stackTrace) {
       AppLogger.error(
         'Failed to refresh Google Sheets source ${cache.sourceId}',
@@ -298,6 +314,10 @@ class _GoogleSheetsPreviewPanelState
   Future<void> _deleteCachedSource(SheetCacheModel cache) async {
     try {
       await ref.read(sheetCacheManagerProvider).deleteSource(cache.sourceId);
+      final uid = _signedInUid;
+      if (uid != null) {
+        unawaited(ref.read(dataSourceSyncProvider).delete(cache.sourceId, uid: uid));
+      }
       if (!mounted) return;
       if (_cacheModel?.sourceId == cache.sourceId) {
         setState(() {
@@ -319,6 +339,58 @@ class _GoogleSheetsPreviewPanelState
         stackTrace: stackTrace,
       );
       if (mounted) setState(() => _error = 'Failed to delete source: $error');
+    }
+  }
+
+  /// Pulls the signed-in user's sources from the cloud into the local cache,
+  /// then re-displays the current one (or the newest) from the refreshed
+  /// cache.
+  Future<void> _syncFromCloud() async {
+    final uid = _signedInUid;
+    final organizationId = ref.read(effectiveOrganizationProvider)?.id;
+    if (uid == null || organizationId == null || organizationId.isEmpty) {
+      setState(() => _error = 'Sign in to sync your data sources with the cloud.');
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final sources = await ref
+          .read(dataSourceSyncProvider)
+          .pull(uid: uid, organizationId: organizationId);
+      ref.invalidate(sourcesListProvider(organizationId));
+      if (_cacheModel != null) {
+        final refreshed =
+            await ref.read(sheetCacheManagerProvider).getCached(_cacheModel!.sourceId);
+        if (refreshed != null) _displayCachedSource(refreshed);
+      } else {
+        final cachedSources =
+            await ref.read(sourcesListProvider(organizationId).future);
+        if (cachedSources.isNotEmpty) {
+          _displayCachedSource(cachedSources.first, editing: false);
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            sources.isEmpty
+                ? 'Cloud sync complete. No saved sources found for this account.'
+                : 'Cloud sync complete. Restored ${sources.length} source(s).',
+          ),
+        ),
+      );
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Cloud sync failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (mounted) setState(() => _error = 'Cloud sync failed: $error');
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -447,6 +519,11 @@ class _GoogleSheetsPreviewPanelState
                     'Saved Google Sheets (${cachedSources?.value?.length ?? 0})',
                     style: theme.textTheme.titleMedium,
                   ),
+                ),
+                TextButton.icon(
+                  onPressed: _loading ? null : _syncFromCloud,
+                  icon: const Icon(Icons.cloud_sync_outlined),
+                  label: const Text('Sync cloud'),
                 ),
                 TextButton.icon(
                   onPressed: _loading ? null : () => _clearForm(),
@@ -754,6 +831,15 @@ class _GoogleSheetsPreviewPanelState
                                 ref.invalidate(
                                   sourcesListProvider(organizationId),
                                 );
+                                final uid = _signedInUid;
+                                if (uid != null) {
+                                  unawaited(
+                                    ref.read(dataSourceSyncProvider).push(
+                                      fresh,
+                                      uid: uid,
+                                    ),
+                                  );
+                                }
                               } catch (e) {
                                 if (!mounted) return;
                                 setState(() {
@@ -763,9 +849,9 @@ class _GoogleSheetsPreviewPanelState
                                 if (mounted) setState(() => _loading = false);
                               }
                             },
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Refresh'),
-                    ),
+icon: const Icon(Icons.refresh),
+                       label: const Text('Refresh'),
+                     ),
                     const SizedBox(width: 8),
                     FilledButton.tonalIcon(
                       onPressed: _loading
@@ -799,6 +885,15 @@ class _GoogleSheetsPreviewPanelState
                                 await ref
                                     .read(cachedDataSourceRepositoryProvider)
                                     .deleteDataSource(_cacheModel!.sourceId);
+                                final uid = _signedInUid;
+                                if (uid != null) {
+                                  unawaited(
+                                    ref.read(dataSourceSyncProvider).delete(
+                                      _cacheModel!.sourceId,
+                                      uid: uid,
+                                    ),
+                                  );
+                                }
                                 if (!mounted) return;
                                 setState(() {
                                   _cacheModel = null;
