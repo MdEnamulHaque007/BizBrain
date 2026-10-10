@@ -121,5 +121,86 @@ void main() {
 
       expect(records.single.poQuantity, 1250);
     });
+
+    test('matches prefixed quantity headers like PO Qty and PO Quantity', () {
+      final table = SheetTable(
+        headers: const ['PO No', 'Article', 'Color', 'PO Qty'],
+        rows: const [
+          ['PO 001', 'Boot', 'Black', '100'],
+          ['PO 001', 'Boot', 'Black', '50'],
+        ],
+        metadata: SheetSourceMetadata(
+          spreadsheetId: 'sheet-a',
+          sheetName: 'po',
+          requestedRange: null,
+          sourceUrl: 'url',
+          loadedAt: _loadedAt,
+        ),
+      );
+      final table2 = SheetTable(
+        headers: const ['PO NO', 'ARTICLE', 'COLOUR', 'PO QUANTITY'],
+        rows: const [
+          ['PO 002', 'Sandal', 'Brown', '75'],
+        ],
+        metadata: SheetSourceMetadata(
+          spreadsheetId: 'sheet-b',
+          sheetName: 'po',
+          requestedRange: null,
+          sourceUrl: 'url',
+          loadedAt: _loadedAt,
+        ),
+      );
+
+      final records = ProductionFlowMapper().map({
+        ProductionStage.po: table,
+        ProductionStage.cutting: table2,
+      });
+
+      expect(records, hasLength(2));
+      final first = records.firstWhere((r) => r.key.poNo == 'PO 001');
+      expect(first.poQuantity, 150);
+      final second = records.firstWhere((r) => r.key.poNo == 'PO 002');
+      expect(second.cuttingQuantity, 75);
+    });
+
+    test('reads a Date column into the record', () {
+      final table = SheetTable(
+        headers: const ['PO No', 'Article', 'Color', 'Qty', 'Date'],
+        rows: const [
+          ['PO 001', 'Boot', 'Black', '100', '24/05/2026'],
+        ],
+        metadata: SheetSourceMetadata(
+          spreadsheetId: 'sheet-a',
+          sheetName: 'po',
+          requestedRange: null,
+          sourceUrl: 'url',
+          loadedAt: _loadedAt,
+        ),
+      );
+
+      final records = ProductionFlowMapper().map({ProductionStage.po: table});
+
+      expect(records.single.date, '24/05/2026');
+    });
+
+    test('keeps date null when no readable date column exists', () {
+      final table = SheetTable(
+        headers: const ['PO No', 'Article', 'Color', 'Qty'],
+        rows: const [
+          ['PO 001', 'Boot', 'Black', '100'],
+        ],
+        metadata: SheetSourceMetadata(
+          spreadsheetId: 'sheet-a',
+          sheetName: 'po',
+          requestedRange: null,
+          sourceUrl: 'url',
+          loadedAt: _loadedAt,
+        ),
+      );
+
+      final records = ProductionFlowMapper().map({ProductionStage.po: table});
+
+      expect(records.single.date, isNull);
+    });
   });
 }

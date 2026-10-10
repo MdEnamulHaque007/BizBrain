@@ -22,6 +22,7 @@ class ProductionFlowKey {
 class ProductionFlowRecord {
   ProductionFlowRecord({
     required this.key,
+    this.date,
     this.poQuantity = 0,
     this.cuttingQuantity = 0,
     this.sewingQuantity = 0,
@@ -31,6 +32,10 @@ class ProductionFlowRecord {
   });
 
   final ProductionFlowKey key;
+
+  /// The PO row's date value (raw cell text, e.g. `24/05/2026`), `null` when
+  /// the sheet had no readable date column.
+  String? date;
   double poQuantity;
   double cuttingQuantity;
   double sewingQuantity;
@@ -56,9 +61,26 @@ class ProductionFlowMapper {
   static const _quantityAliases = <String>[
     'quantity',
     'qty',
+    'po quantity',
+    'po qty',
     'order qty',
     'order quantity',
+    'ordered qty',
+    'ordered quantity',
     'pairs',
+    'units',
+  ];
+  static const _dateAliases = <String>[
+    'date',
+    'po date',
+    'order date',
+    'ship date',
+    'shipment date',
+    'delivery date',
+    'expected date',
+    'completion date',
+    'production date',
+    'etd',
   ];
 
   /// Pattern used to detect a Purchase Order sheet from its name.
@@ -96,6 +118,8 @@ class ProductionFlowMapper {
           key.value,
           () => ProductionFlowRecord(key: key),
         );
+        final date = _value(normalized, _dateAliases);
+        if (date.isNotEmpty) record.date ??= date;
         final quantity = _number(_value(normalized, _quantityAliases));
         _addQuantity(record, entry.key, quantity);
       }
@@ -136,7 +160,24 @@ class ProductionFlowMapper {
       final value = row[_header(alias)]?.trim();
       if (value != null && value.isNotEmpty) return value;
     }
+    // Fall back to whole-word matching so headers like "PO Qty" or
+    // "PO Quantity" still resolve. Short aliases (e.g. "po") stay exact-only
+    // to avoid grabbing unrelated columns.
+    for (final alias in aliases) {
+      final normalizedAlias = _header(alias);
+      if (normalizedAlias.length < 3) continue;
+      for (final entry in row.entries) {
+        if (!_containsWord(entry.key, normalizedAlias)) continue;
+        final value = entry.value.trim();
+        if (value.isNotEmpty) return value;
+      }
+    }
     return '';
+  }
+
+  static bool _containsWord(String text, String word) {
+    final escaped = RegExp.escape(word);
+    return RegExp(r'(^|\s)' + escaped + r'($|\s)').hasMatch(text);
   }
 
   static double _number(String value) {
