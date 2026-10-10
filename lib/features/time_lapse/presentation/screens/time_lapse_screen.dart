@@ -301,81 +301,190 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
 
   Widget _playbackBar(BuildContext context) {
     final theme = Theme.of(context);
-    final current = _playback.current;
+    final c = theme.colorScheme;
     return AnimatedBuilder(
       animation: _playback,
       builder: (context, _) {
+        final current = _playback.current;
+        final enabled = _playback.isEnabled;
+        final slots = _playback.length < 2 ? 1 : _playback.length - 1;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withValues(
-              alpha: .35,
-            ),
+            color: c.surfaceContainerHighest.withValues(alpha: .35),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: theme.colorScheme.outlineVariant),
+            border: Border.all(color: c.outlineVariant),
           ),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              IconButton(
-                tooltip: _playback.isPlaying ? 'Pause' : 'Play',
-                onPressed: _playback.isEnabled
-                    ? () => setState(() => _playback.toggle())
-                    : null,
-                icon: Icon(
-                  _playback.isPlaying
-                      ? Icons.pause_circle_filled_rounded
-                      : Icons.play_circle_filled_rounded,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          current == null
-                              ? 'No timeline'
-                              : _date(current.date),
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          _playback.length < 2
-                              ? '·'
-                              : '${_playback.index + 1}/${_playback.length}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: _playback.isPlaying ? 'Pause' : 'Play',
+                    onPressed: enabled
+                        ? () => setState(() => _playback.toggle())
+                        : null,
+                    icon: Icon(
+                      _playback.isPlaying
+                          ? Icons.pause_circle_filled_rounded
+                          : Icons.play_circle_filled_rounded,
                     ),
-                    const SizedBox(height: 4),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: _playback.progress,
-                        minHeight: 5,
+                  ),
+                  const SizedBox(width: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: c.primary.withValues(alpha: .12),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: c.primary.withValues(alpha: .3)),
+                    ),
+                    child: Text(
+                      current == null ? 'No timeline' : _date(current.date),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: c.primary,
                       ),
                     ),
+                  ),
+                  const Spacer(),
+                  if (_playback.length > 1)
+                    Text(
+                      '${_fmtDuration(_playback.elapsed)} / '
+                      '${_fmtDuration(_playback.elapsed + _playback.remaining)} · '
+                      '${_playback.index + 1}/${_playback.length}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: c.onSurfaceVariant,
+                      ),
+                    ),
+                  IconButton(
+                    tooltip: 'Restart playback',
+                    onPressed: enabled
+                        ? () => setState(() => _playback.restart())
+                        : null,
+                    icon: const Icon(Icons.replay_rounded),
+                  ),
+                  IconButton(
+                    tooltip: 'Reset to start',
+                    onPressed: enabled
+                        ? () => setState(() => _playback.reset())
+                        : null,
+                    icon: const Icon(Icons.first_page_rounded),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Slider(
+                      value: _playback.index.toDouble(),
+                      max: slots.toDouble(),
+                      divisions: slots,
+                      label: current == null
+                          ? null
+                          : _date(current.date),
+                      onChanged: enabled
+                          ? (v) => setState(() => _playback.seekTo(v.round()))
+                          : null,
+                    ),
+                  ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _speedControl(context),
+                    const SizedBox(width: 4),
+                    _durationControl(context),
                   ],
                 ),
-              ),
-              IconButton(
-                tooltip: 'Restart',
-                onPressed: _playback.isEnabled
-                    ? () => setState(() => _playback.restart())
-                    : null,
-                icon: const Icon(Icons.replay_rounded),
               ),
             ],
           ),
         );
       },
     );
+  }
+
+  Widget _speedControl(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.speed_rounded, size: 16, color: c.onSurfaceVariant),
+        const SizedBox(width: 4),
+        Text(
+          'Speed',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: c.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(width: 4),
+        SegmentedButton<double>(
+          segments: const [
+            ButtonSegment(value: 0.5, label: Text('0.5x')),
+            ButtonSegment(value: 1, label: Text('1x')),
+            ButtonSegment(value: 2, label: Text('2x')),
+            ButtonSegment(value: 4, label: Text('4x')),
+          ],
+          selected: {_playback.speed},
+          showSelectedIcon: false,
+          style: const ButtonStyle(
+            visualDensity: VisualDensity.compact,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          onSelectionChanged: (sel) =>
+              setState(() => _playback.setSpeed(sel.first)),
+        ),
+      ],
+    );
+  }
+
+  Widget _durationControl(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.timelapse_rounded, size: 16, color: c.onSurfaceVariant),
+        const SizedBox(width: 4),
+        Text(
+          'Duration',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: c.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(width: 4),
+        SegmentedButton<int>(
+          segments: const [
+            ButtonSegment(value: 30, label: Text('30s')),
+            ButtonSegment(value: 60, label: Text('60s')),
+            ButtonSegment(value: 120, label: Text('120s')),
+          ],
+          selected: {_playback.durationSeconds},
+          showSelectedIcon: false,
+          style: const ButtonStyle(
+            visualDensity: VisualDensity.compact,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          onSelectionChanged: (sel) =>
+              setState(() => _playback.setDuration(sel.first)),
+        ),
+      ],
+    );
+  }
+
+  static String _fmtDuration(Duration d) {
+    final total = d.inSeconds.clamp(0, 1 << 30);
+    final m = total ~/ 60;
+    final s = total % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
   }
 
   Widget _hero(BuildContext context) {
