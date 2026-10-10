@@ -4,7 +4,9 @@ import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
 import 'package:bizbrain/features/organizations/presentation/providers/organization_providers.dart';
 import 'package:bizbrain/features/time_lapse/application/playback_controller.dart';
+import 'package:bizbrain/features/time_lapse/domain/tl_frame.dart';
 import 'package:bizbrain/features/time_lapse/domain/tl_frame_factory.dart';
+import 'package:bizbrain/features/time_lapse/presentation/widgets/animated_kpi_card.dart';
 import 'package:bizbrain/features/time_lapse/presentation/widgets/multi_stage_line_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -152,9 +154,6 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
     final total=filtered.fold<double>(0,(sum,p)=>sum+p.qty);
     final average = filtered.isEmpty ? 0.0 : total / filtered.length;
     final peak = filtered.isEmpty ? 0.0 : filtered.map((p) => p.qty).reduce((a, b) => a > b ? a : b);
-    final growth = graph.length >= 2 && graph.first.value != 0
-        ? ((graph.last.value - graph.first.value) / graph.first.value) * 100
-        : 0.0;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -164,10 +163,10 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
           final cols = box.maxWidth >= 840 ? 4 : 2;
           final w = (box.maxWidth - (cols - 1) * 10) / cols;
           return Wrap(spacing:10,runSpacing:10,children:[
-            SizedBox(width:w,child:_kpi(context,'Total',_fmt(total),Icons.inventory_2_outlined,c.primary,_trend(-1))),
-            SizedBox(width:w,child:_kpi(context,'Average',_fmt(average),Icons.functions_rounded,c.tertiary,_trend(0))),
-            SizedBox(width:w,child:_kpi(context,'Peak',_fmt(peak),Icons.trending_up_rounded,c.secondary,_trend(1))),
-            SizedBox(width:w,child:_kpi(context,'Growth','${growth>=0?'+':''}${_fmt(growth)}%',Icons.insights_rounded,growth>=0?Colors.green.shade700:Colors.red.shade600,_trend(growth<0?-1:growth>0?1:0))),
+            SizedBox(width:w,child:_frameKpi(context,'Total',_kpiTotal(total,_playback.current),Icons.inventory_2_outlined,c.primary,_growthTrend(_frameGrowth(_playback.current)))),
+            SizedBox(width:w,child:_frameKpi(context,'Average',_kpiAvg(average,_playback.current),Icons.functions_rounded,c.tertiary,0)),
+            SizedBox(width:w,child:_frameKpi(context,'Peak',_kpiPeak(peak,_playback.current),Icons.trending_up_rounded,c.secondary,1)),
+            SizedBox(width:w,child:_frameKpi(context,'Growth',_frameGrowth(_playback.current),Icons.insights_rounded,_frameGrowth(_playback.current)>=0?Colors.green.shade700:Colors.red.shade600,_growthTrend(_frameGrowth(_playback.current)),isPercent:true)),
           ]);
         }),
         const SizedBox(height:14),
@@ -509,36 +508,49 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
     ])));
   }
 
-  _Trend _trend(int direction) => _Trend(direction);
-
-  Widget _kpi(BuildContext context,String label,String value,IconData icon,Color color,_Trend trend){
-    final theme=Theme.of(context);
-    return Container(
-      height:120,
-      padding:const EdgeInsets.all(16),
-      decoration:BoxDecoration(
-        gradient:LinearGradient(begin:Alignment.topLeft,end:Alignment.bottomRight,colors:[color.withValues(alpha:.16),color.withValues(alpha:.05)]),
-        borderRadius:BorderRadius.circular(20),
-        border:Border.all(color:color.withValues(alpha:.25)),
-      ),
-      child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Row(children:[
-          Container(width:30,height:30,decoration:BoxDecoration(color:color,borderRadius:BorderRadius.circular(9)),child:Icon(icon,size:17,color:Colors.white)),
-          const Spacer(),
-          _trendIcon(trend,color),
-        ]),
-        const Spacer(),
-        Text(value,style:theme.textTheme.titleLarge?.copyWith(fontWeight:FontWeight.w800,color:theme.colorScheme.onSurface)),
-        Text(label,style:theme.textTheme.bodySmall?.copyWith(color:theme.colorScheme.onSurfaceVariant)),
-      ]),
+  Widget _frameKpi(BuildContext context, String label, double value, IconData icon,
+      Color color, int trend, {bool isPercent = false}) {
+    return AnimatedKpiCard(
+      label: label,
+      value: value,
+      icon: icon,
+      color: color,
+      trend: trend,
+      prefix: isPercent && value > 0 ? '+' : '',
+      suffix: isPercent ? '%' : '',
+      formatter: _fmt,
     );
   }
 
-  Widget _trendIcon(_Trend trend,Color color){
-    if(trend.direction==1)return Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.arrow_upward_rounded,size:15,color:Colors.green.shade700),Text('+',style:TextStyle(color:Colors.green.shade700,fontWeight:FontWeight.w800))]);
-    if(trend.direction==-1)return Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.arrow_downward_rounded,size:15,color:Colors.red.shade600),Text('−',style:TextStyle(color:Colors.red.shade600,fontWeight:FontWeight.w800))]);
-    return Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.remove_rounded,size:15,color:color),Text('—',style:TextStyle(color:color,fontWeight:FontWeight.w800))]);
+  /// Per-frame total; falls back to the full-range total when idle.
+  double _kpiTotal(double full, TLFrame? current) =>
+      current?.total ?? full;
+
+  /// Per-frame average = cumulative total over elapsed bucket count.
+  double _kpiAvg(double full, TLFrame? current) =>
+      current == null ? full : current.total / (current.index + 1);
+
+  /// Per-frame peak = largest cumulative value seen so far.
+  double _kpiPeak(double full, TLFrame? current) {
+    if (current == null) return full;
+    var runningPeak = double.negativeInfinity;
+    for (final frame in _playback.frames) {
+      if (frame.index > current.index) break;
+      if (frame.total > runningPeak) runningPeak = frame.total;
+    }
+    return runningPeak == double.negativeInfinity ? 0 : runningPeak;
   }
+
+  /// Growth % relative to the first bucket; 0 when idle or no baseline.
+  double _frameGrowth(TLFrame? current) {
+    if (current == null || _playback.frames.length < 2) return 0;
+    final first = _playback.frames.first.total;
+    if (first == 0) return 0;
+    return (current.total - first) / first * 100;
+  }
+
+  int _growthTrend(double growth) =>
+      growth < 0 ? -1 : (growth > 0 ? 1 : 0);
 
   Widget _empty(BuildContext context,String title,String message,{VoidCallback? onAction}){
     final c=Theme.of(context).colorScheme;
@@ -707,11 +719,6 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
 class _Point {
   const _Point(this.date,this.qty,this.source,this.dateField,this.qtyField);
   final DateTime date;final double qty;final String source,dateField,qtyField;
-}
-
-class _Trend {
-  const _Trend(this.direction);
-  final int direction;
 }
 
 /// Animated shimmer skeleton shown while sources are loading.

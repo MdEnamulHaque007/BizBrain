@@ -23,6 +23,8 @@ class PlaybackController extends ChangeNotifier {
   int get length => _frames.length;
   bool get isEnabled => _frames.length > 1;
 
+  List<TLFrame> get frames => List.unmodifiable(_frames);
+
   TLFrame? get current =>
       _frames.isEmpty ? null : _frames[_index.clamp(0, length - 1)];
 
