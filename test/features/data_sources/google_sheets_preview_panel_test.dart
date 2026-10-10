@@ -5,11 +5,24 @@ import 'package:bizbrain/features/data_sources/data/local/sheet_cache_storage.da
 import 'package:bizbrain/features/data_sources/data/repositories/cached_data_source_repository.dart';
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
 import 'package:bizbrain/features/data_sources/presentation/widgets/google_sheets_preview_panel.dart';
+import 'package:bizbrain/features/organizations/domain/entities/organization.dart';
+import 'package:bizbrain/features/organizations/presentation/providers/organization_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+
+final DateTime _testOrgCreatedAt = DateTime.utc(2026, 1, 1);
+
+final Organization _testOrg = Organization(
+  id: 'org-1',
+  name: 'Acme',
+  ownerId: 'u-1',
+  memberIds: ['u-1'],
+  status: OrganizationStatus.active,
+  createdAt: _testOrgCreatedAt,
+);
 
 void main() {
   testWidgets('automatically displays the newest cached sheet on open', (
@@ -32,7 +45,11 @@ void main() {
       ProviderScope(
         overrides: [
           sheetCacheStorageReadyProvider.overrideWith((ref) => true),
-          cachedSourcesProvider.overrideWith((ref) async => [latest, second]),
+          activeOrganizationProvider.overrideWithValue(_testOrg),
+          sourcesListProvider('org-1').overrideWith((ref) async => [
+            latest,
+            second,
+          ]),
           sheetCacheManagerProvider.overrideWith((ref) => manager),
         ],
         child: const MaterialApp(
@@ -92,7 +109,8 @@ void main() {
       ProviderScope(
         overrides: [
           sheetCacheStorageReadyProvider.overrideWith((ref) => true),
-          cachedSourcesProvider.overrideWith((ref) async => []),
+          activeOrganizationProvider.overrideWithValue(_testOrg),
+          sourcesListProvider('org-1').overrideWith((ref) async => []),
           sheetCacheManagerProvider.overrideWith((ref) => manager),
           cachedDataSourceRepositoryProvider.overrideWith((ref) => repository),
         ],
@@ -124,7 +142,8 @@ void main() {
       ProviderScope(
         overrides: [
           sheetCacheStorageReadyProvider.overrideWith((ref) => true),
-          cachedSourcesProvider.overrideWith((ref) async => []),
+          activeOrganizationProvider.overrideWithValue(_testOrg),
+          sourcesListProvider('org-1').overrideWith((ref) async => []),
           sheetCacheManagerProvider.overrideWith((ref) => manager),
         ],
         child: const MaterialApp(
@@ -164,7 +183,7 @@ SheetCacheModel _cache({
   String rowText = 'Boot',
 }) => SheetCacheModel(
   sourceId: sourceId,
-  organizationId: 'default',
+  organizationId: 'org-1',
   sheetUrl: 'https://docs.google.com/spreadsheets/d/abcdefghijk/gviz/tq',
   sheetName: sheetName,
   rows: [

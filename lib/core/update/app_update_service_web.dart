@@ -2,19 +2,42 @@ import 'dart:js_interop';
 
 import 'package:web/web.dart' as web;
 
-class AppUpdateStatus {
-  const AppUpdateStatus({required this.updateAvailable, this.version});
+import 'update_check_logic.dart';
 
-  final bool updateAvailable;
-  final String? version;
-}
+export 'update_check_logic.dart';
 
+/// Web implementation backed by localStorage persistence and a version.txt
+/// fetch. The pure version/cooldown decisions live in [UpdateCheckLogic]; this
+/// class owns the browser-only plumbing.
 class AppUpdateService {
-  static String? _loadedVersion;
+  static final UpdateCheckLogic _logic = UpdateCheckLogic(
+    read: (key) async => web.window.localStorage.getItem(key),
+    write: (key, value) async {
+      web.window.localStorage.setItem(key, value);
+    },
+    fetchLatest: _readLatest,
+  );
 
-  static Future<void> initialize() async {
-    final status = await _readLatest();
-    _loadedVersion = status;
+  static Future<void> initialize() => _logic.initialize();
+
+  static Future<AppUpdateStatus> check() => _logic.check();
+
+  static Future<void> applyUpdate() async {
+    final latest = await _readLatest();
+    if (latest != null) await _logic.acknowledge(latest);
+
+    final registrations =
+        await web.window.navigator.serviceWorker.getRegistrations().toDart;
+    for (final registration in registrations.toDart) {
+      await registration.unregister().toDart;
+    }
+
+    final keys = await web.window.caches.keys().toDart;
+    for (final key in keys.toDart) {
+      await web.window.caches.delete(key.toDart).toDart;
+    }
+
+    web.window.location.reload();
   }
 
   static Future<String?> _readLatest() async {
@@ -28,33 +51,5 @@ class AppUpdateService {
     } catch (_) {
       return null;
     }
-  }
-
-  static Future<AppUpdateStatus> check() async {
-    final latest = await _readLatest();
-    if (latest == null) {
-      return const AppUpdateStatus(updateAvailable: false);
-    }
-
-    _loadedVersion ??= latest;
-    return AppUpdateStatus(
-      updateAvailable: latest != _loadedVersion,
-      version: latest,
-    );
-  }
-
-  static Future<void> applyUpdate() async {
-    final registrations =
-        await web.window.navigator.serviceWorker.getRegistrations().toDart;
-    for (final registration in registrations.toDart) {
-      await registration.unregister().toDart;
-    }
-
-    final keys = await web.window.caches.keys().toDart;
-    for (final key in keys.toDart) {
-      await web.window.caches.delete(key.toDart).toDart;
-    }
-
-    web.window.location.reload();
   }
 }

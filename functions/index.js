@@ -20,12 +20,30 @@ exports.aiChat = onCall({ secrets: [openAiApiKey], region: "asia-south1" }, asyn
   const config = configDoc.data() || {};
   const model = String(config.model || "gpt-5.6");
   const client = new OpenAI({ apiKey: openAiApiKey.value() });
-  const response = await client.responses.create({
-    model,
-    instructions: "You are BizBrain, a business data analyst. Answer only from the supplied business context. If data is insufficient, say exactly what is missing. Do calculations carefully. Reply in the user's language.",
-    input: JSON.stringify({ question, businessContext }),
-  });
-  return { answer: response.output_text, model };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    const response = await client.responses.create(
+      {
+        model,
+        instructions: "You are BizBrain, a business data analyst. Answer only from the supplied business context. If data is insufficient, say exactly what is missing. Do calculations carefully. Reply in the user's language.",
+        input: JSON.stringify({ question, businessContext }),
+      },
+      { signal: controller.signal },
+    );
+    return { answer: response.output_text, model };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("aiChat request failed:", message);
+    const timedOut = controller.signal.aborted || /abort|timeout/i.test(message);
+    if (timedOut) {
+      throw new HttpsError("deadline-exceeded", "AI request timed out after 30s.");
+    }
+    throw new HttpsError("unavailable", `AI request failed: ${message}`);
+  } finally {
+    clearTimeout(timer);
+  }
 });
 
 exports.saveAiModelSettings = onCall({ region: "asia-south1" }, async (request) => {
@@ -35,7 +53,7 @@ exports.saveAiModelSettings = onCall({ region: "asia-south1" }, async (request) 
   if (provider !== "openai") throw new HttpsError("invalid-argument", "Only OpenAI is enabled right now.");
   if (!model) throw new HttpsError("invalid-argument", "model is required.");
   await db.collection("ai_model_settings").doc(request.auth.uid).set({ provider, model, updatedAt: new Date().toISOString() }, { merge: true });
-  return { provider, model, apiKeyConfigured: Boolean(openAiApiKey.value) };
+  return { provider, model, apiKeyConfigured: Boolean(openAiApiKey.value()) };
 });
 
 exports.getAiModelSettings = onCall({ region: "asia-south1" }, async (request) => {

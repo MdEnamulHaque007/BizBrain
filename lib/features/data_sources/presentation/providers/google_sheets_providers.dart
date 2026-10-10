@@ -36,22 +36,28 @@ final Provider<SheetCacheManager> sheetCacheManagerProvider =
       return SheetCacheManager(ref.read(sheetCacheStorageProvider));
     });
 
-/// All locally cached Google Sheets sources, loaded when the feature starts.
-final FutureProvider<List<SheetCacheModel>> sourcesListProvider =
-    FutureProvider<List<SheetCacheModel>>((ref) async {
+/// All locally cached Google Sheets sources for a single organization.
+///
+/// The list is scoped by [organizationId] to preserve tenant isolation: a
+/// cached sheet belonging to one organization must never surface inside
+/// another organization's screens (or in guest mode, where the id is empty).
+final sourcesListProvider =
+    FutureProvider.family<List<SheetCacheModel>, String>((
+      ref,
+      organizationId,
+    ) async {
       // Routes can be rendered in tests or during startup before Hive is ready.
-      // Do not let an unavailable local cache crash the whole app shell.
-      if (!Hive.isBoxOpen('sheet_cache_v1')) {
+      // Do not let an unavailable local cache crash the whole app shell, and
+      // never read tenant data outside an organization context.
+      if (organizationId.isEmpty || !Hive.isBoxOpen('sheet_cache_v1')) {
         return <SheetCacheModel>[];
       }
-      final sources = await ref.read(sheetCacheManagerProvider).listSources();
+      final sources = await ref
+          .read(sheetCacheManagerProvider)
+          .listSources(organizationId: organizationId);
       sources.sort((a, b) => b.fetchedAt.compareTo(a.fetchedAt));
       return sources;
     });
-
-/// Backwards-compatible provider name for the cached sheet list.
-final FutureProvider<List<SheetCacheModel>> cachedSourcesProvider =
-    sourcesListProvider;
 
 /// Cached repository for data sources.
 final Provider<CachedDataSourceRepository> cachedDataSourceRepositoryProvider =

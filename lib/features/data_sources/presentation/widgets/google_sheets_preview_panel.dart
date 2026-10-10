@@ -86,8 +86,15 @@ class _GoogleSheetsPreviewPanelState
       );
 
       final sourceId = _sourceId(source);
-      final organizationId =
-          ref.read(activeOrganizationProvider)?.id ?? 'default';
+      final organizationId = ref.read(activeOrganizationProvider)?.id;
+      if (organizationId == null || organizationId.isEmpty) {
+        setState(() {
+          _error = 'Select an organization before connecting a Google Sheet.';
+          _table = null;
+          _cacheModel = null;
+        });
+        return;
+      }
 
       final repo = ref.read(cachedDataSourceRepositoryProvider);
 
@@ -121,7 +128,7 @@ class _GoogleSheetsPreviewPanelState
         _editingSourceId = loaded.sourceId;
         _error = null;
       });
-      ref.invalidate(sourcesListProvider);
+      ref.invalidate(sourcesListProvider(organizationId));
     } on GoogleSheetsInputException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -157,7 +164,12 @@ class _GoogleSheetsPreviewPanelState
       if (!ref.read(sheetCacheStorageReadyProvider)) {
         return;
       }
-      final sources = await ref.read(cachedSourcesProvider.future);
+      final organizationId = ref.read(activeOrganizationProvider)?.id ?? '';
+      // Without an organization context (guest mode) the cache must not be
+      // read: it may hold a previous tenant's data.
+      if (organizationId.isEmpty) return;
+      final sources =
+          await ref.read(sourcesListProvider(organizationId).future);
       if (!mounted || _userInteracted || sources.isEmpty) return;
       _displayCachedSource(sources.first, editing: false);
     } catch (error, stackTrace) {
@@ -270,7 +282,7 @@ class _GoogleSheetsPreviewPanelState
           );
       if (!mounted) return;
       _displayCachedSource(refreshed);
-      ref.invalidate(sourcesListProvider);
+      ref.invalidate(sourcesListProvider(cache.organizationId));
     } catch (error, stackTrace) {
       AppLogger.error(
         'Failed to refresh Google Sheets source ${cache.sourceId}',
@@ -299,7 +311,7 @@ class _GoogleSheetsPreviewPanelState
           _editingSourceId = null;
         });
       }
-      ref.invalidate(sourcesListProvider);
+      ref.invalidate(sourcesListProvider(cache.organizationId));
     } catch (error, stackTrace) {
       AppLogger.error(
         'Failed to delete Google Sheets source ${cache.sourceId}',
@@ -385,7 +397,10 @@ class _GoogleSheetsPreviewPanelState
     final theme = Theme.of(context);
     final table = _table;
     final cacheReady = ref.watch(sheetCacheStorageReadyProvider);
-    final cachedSources = cacheReady ? ref.watch(sourcesListProvider) : null;
+    final organizationId = ref.watch(activeOrganizationProvider)?.id ?? '';
+    final cachedSources = cacheReady && organizationId.isNotEmpty
+        ? ref.watch(sourcesListProvider(organizationId))
+        : null;
 
     return Card(
       child: Padding(
@@ -440,16 +455,13 @@ class _GoogleSheetsPreviewPanelState
                 ),
               ],
             ),
-            if (!cacheReady)
+            if (cachedSources == null)
               Text(
-                'Local cache is unavailable. Restart the app to initialize '
-                'persistent sheet storage.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
+                'Select an organization to view cached sheets.',
+                style: theme.textTheme.bodySmall,
               )
             else
-              cachedSources!.when(
+              cachedSources.when(
                 loading: () => const LinearProgressIndicator(),
                 error: (error, _) => Text(
                   'Could not load cached sheets: $error',
@@ -691,8 +703,15 @@ class _GoogleSheetsPreviewPanelState
                               );
                               final sourceId = _sourceId(source);
                               final organizationId =
-                                  ref.read(activeOrganizationProvider)?.id ??
-                                  'default';
+                                  ref.read(activeOrganizationProvider)?.id;
+                              if (organizationId == null ||
+                                  organizationId.isEmpty) {
+                                setState(() {
+                                  _error =
+                                      'Select an organization to refresh this sheet.';
+                                });
+                                return;
+                              }
                               setState(() => _loading = true);
                               try {
                                 final fresh = await ref
@@ -732,7 +751,9 @@ class _GoogleSheetsPreviewPanelState
                                   _cacheModel = fresh;
                                   _error = null;
                                 });
-                                ref.invalidate(sourcesListProvider);
+                                ref.invalidate(
+                                  sourcesListProvider(organizationId),
+                                );
                               } catch (e) {
                                 if (!mounted) return;
                                 setState(() {
@@ -772,6 +793,7 @@ class _GoogleSheetsPreviewPanelState
                                 ),
                               );
                               if (confirm != true) return;
+                              final deletedOrg = _cacheModel?.organizationId;
                               setState(() => _loading = true);
                               try {
                                 await ref
@@ -782,7 +804,9 @@ class _GoogleSheetsPreviewPanelState
                                   _cacheModel = null;
                                   _table = null;
                                 });
-                                ref.invalidate(sourcesListProvider);
+                                ref.invalidate(
+                                  sourcesListProvider(deletedOrg ?? ''),
+                                );
                               } catch (e) {
                                 if (!mounted) return;
                                 setState(() {
@@ -818,7 +842,11 @@ class _PreviewTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final visibleRows = table.rows.take(rowLimit);
+    final visibleRows = table.rows.take(rowLimit).toList(growable: false);
+    var columnCount = table.headers.length;
+    for (final row in visibleRows) {
+      if (row.length > columnCount) columnCount = row.length;
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -830,14 +858,20 @@ class _PreviewTable extends StatelessWidget {
               theme.colorScheme.surfaceContainerHighest,
             ),
             columns: [
-              for (final header in table.headers)
-                DataColumn(label: Text(header.isEmpty ? ' ' : header)),
+              for (var i = 0; i < columnCount; i++)
+                DataColumn(
+                  label: Text(
+                    i < table.headers.length
+                        ? (table.headers[i].isEmpty ? ' ' : table.headers[i])
+                        : 'Column ${i + 1}',
+                  ),
+                ),
             ],
             rows: [
               for (final row in visibleRows)
                 DataRow(
                   cells: [
-                    for (var i = 0; i < table.headers.length; i++)
+                    for (var i = 0; i < columnCount; i++)
                       DataCell(Text(i < row.length ? row[i] : '')),
                   ],
                 ),

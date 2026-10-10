@@ -1,5 +1,6 @@
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
+import 'package:bizbrain/features/organizations/presentation/providers/organization_providers.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -70,6 +71,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     } on FirebaseFunctionsException catch (error) {
       if (!mounted) return;
       final message = switch (error.code) {
+        'deadline-exceeded' => 'AI সেবা সময় শেষ হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।',
         'unauthenticated' => 'AI Chat ব্যবহার করতে প্রথমে লগইন করুন।',
         'invalid-argument' => 'প্রশ্ন বা business data সঠিকভাবে পাঠানো যায়নি।',
         'not-found' => 'Firebase-এর aiChat function deploy করা নেই বা পাওয়া যায়নি।',
@@ -106,7 +108,9 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final sources = ref.watch(sourcesListProvider);
+    // Only the active organization's cached sheets may feed the chat context.
+    final organizationId = ref.watch(activeOrganizationProvider)?.id ?? '';
+    final sources = ref.watch(sourcesListProvider(organizationId));
     return Scaffold(
       appBar: AppBar(
         title: Row(

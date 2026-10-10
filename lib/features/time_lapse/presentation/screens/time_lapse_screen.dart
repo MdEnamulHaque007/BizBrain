@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
+import 'package:bizbrain/features/organizations/presentation/providers/organization_providers.dart';
+import 'package:bizbrain/features/time_lapse/presentation/widgets/multi_stage_line_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -17,6 +19,7 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
   String _qtyField = 'Auto detect';
   String _range = '30 days';
   String _group = 'Day';
+  bool _showMovingAverage = false;
 
   static const _dateAliases = ['date','timestamp','createdat','updatedat','cuttingdate','sewingdate','lastingdate','productiondate','issuedate','shipmentdate','exportdate','entrydate'];
   static const _qtyAliases = ['quantity','qty','cuttingquantity','sewingquantity','lastingquantity','productionquantity','issuequantity','shipmentquantity','exportquantity','fgquantity','poquantity','totalquantity'];
@@ -30,9 +33,9 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
         leading: Container(margin: const EdgeInsets.all(9),
           decoration: BoxDecoration(gradient: LinearGradient(colors: [c.primary,c.tertiary]), borderRadius: BorderRadius.circular(12)),
           child: Icon(Icons.timelapse_rounded,color:c.onPrimary)),
-        actions: [IconButton(tooltip:'Reload sources',onPressed:()=>ref.invalidate(sourcesListProvider),icon:const Icon(Icons.refresh_rounded))],
+        actions: [IconButton(tooltip:'Reload sources',onPressed:((){final orgId=ref.read(activeOrganizationProvider)?.id??'';ref.invalidate(sourcesListProvider(orgId));}),icon:const Icon(Icons.refresh_rounded))],
       ),
-      body: ref.watch(sourcesListProvider).when(
+      body: ref.watch(sourcesListProvider(ref.watch(activeOrganizationProvider)?.id ?? '')).when(
         loading:()=>const Center(child:CircularProgressIndicator()),
         error:(e,_)=>Center(child:Padding(padding:const EdgeInsets.all(24),child:Text('Could not load Google Sheets cache: $e'))),
         data:(all)=>_report(context,all),
@@ -66,7 +69,7 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
     final filtered=_filter(raw);
     final grouped=<DateTime,double>{};
     for(final p in filtered) {
-      final d=_group=='Month'?DateTime(p.date.year,p.date.month):_group=='Week'?_week(p.date):DateTime(p.date.year,p.date.month,p.date.day);
+      final d=_bucket(p.date);
       grouped[d]=(grouped[d]??0)+p.qty;
     }
     final graph=grouped.entries.toList()..sort((a,b)=>a.key.compareTo(b.key));
@@ -135,8 +138,20 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
           Card(elevation:0,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20),side:BorderSide(color:c.outlineVariant)),child:Padding(padding:const EdgeInsets.all(16),child:graph.isEmpty
             ?_empty(context,'No matching date and quantity rows','Check the selected headers or choose All dates. Only real numeric quantities with readable dates are plotted.')
             :Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-              SizedBox(height:250,width:double.infinity,child:CustomPaint(painter:_LinePainter(points:graph,line:c.primary,grid:c.outlineVariant,text:c.onSurfaceVariant))),
-              const SizedBox(height:8),Text('X-axis: $_group · Y-axis: summed quantity',style:theme.textTheme.bodySmall?.copyWith(color:c.onSurfaceVariant))
+              MultiStageLineChart(
+                stageData: _chartStageData(filtered),
+                stageColors: _stageColors(labels),
+                showMovingAverage: _showMovingAverage,
+              ),
+              const SizedBox(height:8),Text('X-axis: $_group · Y-axis: summed quantity',style:theme.textTheme.bodySmall?.copyWith(color:c.onSurfaceVariant)),
+              const SizedBox(height:8),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('Show 7-day moving average'),
+                value: _showMovingAverage,
+                onChanged: (v) => setState(() => _showMovingAverage = v),
+              ),
             ]))),
           const SizedBox(height:18),
           _title(context,'Anomaly detection',Icons.warning_amber_rounded),
@@ -171,6 +186,57 @@ class _TimeLapseScreenState extends ConsumerState<TimeLapseScreen> {
         ]
       ]),
     );
+  }
+
+  /// Buckets a date according to the selected grouping (Day / Week / Month).
+  DateTime _bucket(DateTime date) => _group=='Month'
+      ? DateTime(date.year,date.month)
+      : _group=='Week'
+      ? _week(date)
+      : DateTime(date.year,date.month,date.day);
+
+  /// Splits the filtered points into one summed series per stage / sheet.
+  Map<String, List<TrendPoint>> _groupByStage(List<_Point> points) {
+    final byStage = <String, Map<DateTime, double>>{};
+    for (final p in points) {
+      final buckets = byStage.putIfAbsent(p.source, () => <DateTime, double>{});
+      final d = _bucket(p.date);
+      buckets[d] = (buckets[d] ?? 0) + p.qty;
+    }
+    return byStage.map((stage, buckets) {
+      final entries = buckets.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+      return MapEntry(stage, entries.map((e) => TrendPoint(date: e.key, value: e.value)).toList(growable: false));
+    });
+  }
+
+  /// Chart data, optionally appending a 7-point moving average per stage.
+  Map<String, List<TrendPoint>> _chartStageData(List<_Point> filtered) {
+    final data = _groupByStage(filtered);
+    if (!_showMovingAverage) return data;
+    final averaged = <String, List<TrendPoint>>{};
+    data.forEach((stage, pts) {
+      final avg = _movingAverage(pts, 7);
+      if (avg.isNotEmpty) averaged['$stage (7d avg)'] = avg;
+    });
+    return {...data, ...averaged};
+  }
+
+  /// Distinct palette colour for each stage label.
+  List<Color> _stageColors(List<String> labels) =>
+      MultiStageLineChart.colorsFor(labels.length);
+
+  /// Simple trailing moving average over [window] points.
+  List<TrendPoint> _movingAverage(List<TrendPoint> points, int window) {
+    if (points.length < window) return [];
+    final result = <TrendPoint>[];
+    for (int i = window - 1; i < points.length; i++) {
+      double sum = 0;
+      for (int j = 0; j < window; j++) {
+        sum += points[i - j].value;
+      }
+      result.add(TrendPoint(date: points[i].date, value: sum / window));
+    }
+    return result;
   }
 
   List<_Point> _filter(List<_Point> points) {
@@ -287,6 +353,9 @@ class _Point {
   final DateTime date;final double qty;final String source,dateField,qtyField;
 }
 
+// Retained as a dependency-free fallback renderer; the live chart is
+// [MultiStageLineChart].
+// ignore: unused_element
 class _LinePainter extends CustomPainter {
   const _LinePainter({required this.points,required this.line,required this.grid,required this.text});
   final List<MapEntry<DateTime,double>> points;final Color line,grid,text;

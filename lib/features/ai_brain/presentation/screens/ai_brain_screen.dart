@@ -2,6 +2,7 @@ import 'package:bizbrain/features/ai_brain/domain/context/production_flow_mapper
 import 'package:bizbrain/features/data_sources/data/google_sheets/sheet_table.dart';
 import 'package:bizbrain/features/data_sources/data/local/sheet_cache_model.dart';
 import 'package:bizbrain/features/data_sources/presentation/providers/google_sheets_providers.dart';
+import 'package:bizbrain/features/organizations/presentation/providers/organization_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,7 +11,8 @@ class AiBrainScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final sources = ref.watch(sourcesListProvider);
+    final organizationId = ref.watch(activeOrganizationProvider)?.id ?? '';
+    final sources = ref.watch(sourcesListProvider(organizationId));
     final colors = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
@@ -229,7 +231,7 @@ class _MappedProductionFlowView extends StatelessWidget {
     if (name.contains('lasting') || name.contains('production')) return ProductionStage.lasting;
     if (name.contains('finished good') || name.contains('fg')) return ProductionStage.fg;
     if (name.contains('export') || name.contains('shipment')) return ProductionStage.export;
-    if (RegExp(r'(^|\\s)p\\.?o\\.?(\\s|$)').hasMatch(name) || name.contains('purchase order')) return ProductionStage.po;
+    if (ProductionFlowMapper.isPoSheetName(name)) return ProductionStage.po;
     return null;
   }
 

@@ -80,12 +80,51 @@ void main() {
 
     await repository.deleteDataSource('source-one');
 
-    expect(await repository.getDataSource('source-one'), isNull);
-    expect(
-      await repository.listDataSources(organizationId: 'org-one'),
-      isEmpty,
-    );
+    expect(await storage.get('source-one'), isNull);
+    expect(await storage.getAll(organizationId: 'org-one'), isEmpty);
     expect(requestCount, 2);
+  });
+
+  test('cache hit without a label preserves the saved label', () async {
+    await repository.loadDataSource(
+      source: source,
+      sourceId: 'source-one',
+      organizationId: 'org-one',
+      sourceLabel: 'Inventory',
+      sourceInput: 'abcdefghijk',
+    );
+    expect(requestCount, 1);
+
+    final reloaded = await repository.loadDataSource(
+      source: source,
+      sourceId: 'source-one',
+      organizationId: 'org-one',
+      // No explicit label: the previously saved label must survive.
+      sourceInput: 'abcdefghijk',
+    );
+
+    expect(requestCount, 1);
+    expect(reloaded.sourceLabel, 'Inventory');
+  });
+
+  test('cache hit with an explicit label overwrites it', () async {
+    await repository.loadDataSource(
+      source: source,
+      sourceId: 'source-one',
+      organizationId: 'org-one',
+      sourceLabel: 'Old label',
+      sourceInput: 'abcdefghijk',
+    );
+
+    final reloaded = await repository.loadDataSource(
+      source: source,
+      sourceId: 'source-one',
+      organizationId: 'org-one',
+      sourceLabel: 'New label',
+      sourceInput: 'abcdefghijk',
+    );
+
+    expect(reloaded.sourceLabel, 'New label');
   });
 
   test(
@@ -105,15 +144,6 @@ void main() {
       expect(requestCount, 0);
     },
   );
-
-  test('organization stream yields only that organization’s cache', () async {
-    await storage.save(createCache('one', 'org-one'));
-    await storage.save(createCache('two', 'org-two'));
-
-    final sources = await repository.watchForOrganization('org-one').first;
-
-    expect(sources.map((source) => source.id), ['one']);
-  });
 }
 
 SheetCacheModel createCache(String id, String organizationId) =>

@@ -1,10 +1,9 @@
-class AppUpdateStatus {
-  const AppUpdateStatus({required this.updateAvailable, this.version});
+import 'update_check_logic.dart';
 
-  final bool updateAvailable;
-  final String? version;
-}
+export 'update_check_logic.dart';
 
+/// Non-web stub: nothing to check or update outside the browser, but keeps
+/// the exact [AppUpdateService] API so every platform compiles.
 class AppUpdateService {
   static Future<void> initialize() async {}
 

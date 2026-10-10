@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:bizbrain/features/data_sources/data/google_sheets/google_sheets_loader.dart';
 import 'package:bizbrain/features/data_sources/domain/entities/google_sheets_data_source.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -62,6 +64,29 @@ void main() {
       'Region': 'North',
       'Sales': '100',
       'Quarter': 'Q1',
+    });
+  });
+
+  test('decodes non-ASCII CSV as UTF-8', () async {
+    final loader = loaderWith(
+      MockClient(
+        (_) async => http.Response.bytes(
+          utf8.encode('Name,Qty\nBoot,4\nকাটিং,১২\n'),
+          200,
+        ),
+      ),
+    );
+
+    final table = await loader.load(source());
+
+    expect(table.headers, <String>['Name', 'Qty']);
+    expect(table.rows, [
+      ['Boot', '4'],
+      ['কাটিং', '১২'],
+    ]);
+    expect(table.toRecords().last, <String, String>{
+      'Name': 'কাটিং',
+      'Qty': '১২',
     });
   });
 

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:bizbrain/features/data_sources/data/google_sheets/sheet_csv.dart';
 import 'package:bizbrain/features/data_sources/data/google_sheets/sheet_table.dart';
 import 'package:bizbrain/features/data_sources/domain/entities/google_sheets_data_source.dart';
@@ -99,7 +101,10 @@ class GoogleSheetsLoader {
       );
     }
 
-    final body = response.body.trim();
+    // Decode as UTF-8 explicitly: `response.body` falls back to Latin-1 when
+    // the server omits a charset, which corrupts non-ASCII spreadsheet data.
+    final csvText = utf8.decode(response.bodyBytes, allowMalformed: true);
+    final body = csvText.trim();
     if (body.startsWith('<')) {
       // Google serves an HTML error/login page instead of CSV when the
       // spreadsheet, the sheet name or the sharing settings block access.
@@ -117,7 +122,7 @@ class GoogleSheetsLoader {
       );
     }
 
-    var grid = parseCsv(response.body);
+    var grid = parseCsv(csvText);
     if (grid.isEmpty) {
       throw const SheetsLoadException(
         SheetsLoadErrorCode.emptyData,

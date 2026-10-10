@@ -16,7 +16,7 @@ class ProductionFlowKey {
   String get value => '${_normalize(poNo)}|${_normalize(article)}|${_normalize(color)}';
 
   static String _normalize(String value) =>
-      value.trim().toLowerCase().replaceAll(RegExp(r'\\s+'), ' ');
+      value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 }
 
 class ProductionFlowRecord {
@@ -60,6 +60,16 @@ class ProductionFlowMapper {
     'order quantity',
     'pairs',
   ];
+
+  /// Pattern used to detect a Purchase Order sheet from its name.
+  static final RegExp _poNamePattern = RegExp(r'(^|\s)p\.?o\.?(\s|$)');
+
+  /// Whether [name] looks like a Purchase Order sheet.
+  static bool isPoSheetName(String name) {
+    final normalized = name.trim().toLowerCase();
+    return _poNamePattern.hasMatch(normalized) ||
+        normalized.contains('purchase order');
+  }
 
   List<ProductionFlowRecord> map(
     Map<ProductionStage, SheetTable> tables,
@@ -118,8 +128,8 @@ class ProductionFlowMapper {
   static String _header(String value) => value
       .trim()
       .toLowerCase()
-      .replaceAll(RegExp(r'[_\\-]+'), ' ')
-      .replaceAll(RegExp(r'\\s+'), ' ');
+      .replaceAll(RegExp(r'[_\-]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ');
 
   static String _value(Map<String, String> row, List<String> aliases) {
     for (final alias in aliases) {

@@ -62,13 +62,41 @@ class AuthController extends Notifier<AuthState> {
     // overwrite it.
     if (state.status == AuthStatus.guest) return;
     if (user == null) {
+      final wasAuthenticated = state.status == AuthStatus.authenticated;
       // Only clear a session when we actually had one; keep action messages.
-      state = state.status == AuthStatus.authenticated
+      state = wasAuthenticated
           ? const AuthState.signedOut()
           : state.copyWith(status: AuthStatus.unauthenticated, clearUser: true);
+      if (wasAuthenticated) {
+        // The session ended outside the sign-out button (token revoked,
+        // account disabled, another tab signed out). Local tenant data must
+        // not outlive it.
+        unawaited(_clearLocalTenantData().catchError(_logCleanupFailure));
+      }
     } else {
       state = AuthState.authenticated(user);
     }
+  }
+
+  /// Drops every tenant-scoped local cache. AppUser carries no organization
+  /// membership, so signing out clears all organizations' cached sheets to
+  /// guarantee no tenant data survives a user switch.
+  Future<void> _clearLocalTenantData() async {
+    if (Hive.isBoxOpen('sheet_cache_v1')) {
+      await ref.read(sheetCacheManagerProvider).invalidateAll();
+    }
+    // Defensive: if cached AI analysis is ever persisted it is tenant data too.
+    if (Hive.isBoxOpen('ai_brain_analysis_v1')) {
+      await Hive.box('ai_brain_analysis_v1').clear();
+    }
+  }
+
+  void _logCleanupFailure(Object error, StackTrace stackTrace) {
+    AppLogger.error(
+      'Session ended, but local cache cleanup failed',
+      error: error,
+      stackTrace: stackTrace,
+    );
   }
 
   /// Returns `true` when the sign-in succeeded. On failure the state carries
@@ -123,33 +151,34 @@ class AuthController extends Notifier<AuthState> {
     state = state.copyWith(busy: true, clearMessage: true);
     try {
       await _repository.signOut();
-      try {
-        // AppUser has no organization membership field, so clear all local
-        // sheet caches to ensure no tenant data survives a user switch.
-        if (Hive.isBoxOpen('sheet_cache_v1')) {
-          await ref.read(sheetCacheManagerProvider).invalidateAll();
-        }
-      } catch (error, stackTrace) {
-        AppLogger.error(
-          'Signed out, but Google Sheets cache cleanup failed',
-          error: error,
-          stackTrace: stackTrace,
-        );
-        state = const AuthState.signedOut(
-          message: 'Signed out, but local Google Sheets cache cleanup failed.',
-        );
-        return;
-      }
-      state = const AuthState.signedOut();
     } catch (error) {
       _fail(error);
+      return;
     }
+    // The backend session is gone, so a local cleanup failure must not
+    // masquerade as a failed sign-out; surface it as a message instead.
+    try {
+      await _clearLocalTenantData();
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Signed out, but local Google Sheets cache cleanup failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      state = const AuthState.signedOut(
+        message: 'Signed out, but local Google Sheets cache cleanup failed.',
+      );
+      return;
+    }
+    state = const AuthState.signedOut();
   }
 
   /// Enters a local guest demo session. No repository call: works even when
   /// the auth backend is unconfigured.
   void continueAsGuest() {
     if (state.status == AuthStatus.guest) return;
+    // A fresh guest session must never surface a previous tenant's local data.
+    unawaited(_clearLocalTenantData().catchError(_logCleanupFailure));
     state = const AuthState.guest();
   }
 
